@@ -6,6 +6,8 @@
 - Robust classification
 - Inference with missing values
 
+This repository reproduces the experiments provided in the papers [Joints in Random Forests](https://arxiv.org/abs/2006.14937) and [Towards Robust Classification with Deep Generative Forests](https://arxiv.org/abs/2007.05721). See the `experiments` folder for the experimental set-up.
+
 ## Installation
 
 To install GeFs it suffices to run `pip install .` at the root directory of this repository. This project was developed for Python 3 and mostly likely will not run in Python 2.
@@ -67,7 +69,7 @@ If you find GeFs useful please consider citing us in your work
 @article{correia2020towards,
   title={Towards Robust Classification with Deep Generative Forests},
   author={Correia, A. H. C. and Peharz, R. and de Campos, C. P.},
-  journal={arXiv preprint arXiv:2007.05721},
+  journal={ICML 2020 Workshop on Uncertainty and Robustness in Deep Learning},
   year={2020}
 }
 ```
