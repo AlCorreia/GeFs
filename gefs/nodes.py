@@ -548,29 +548,6 @@ def econtaminate(vec, logprs, eps, ismax):
 
 
 @njit
-def eval_rob_class(node, evi, class_var, n_classes, eps, maxclass):
-    """ Same as `evaluate_rob_class` for the root sum node. """
-    values_min, values_max = np.zeros((node.nchildren, n_classes)), np.zeros((node.nchildren, n_classes))
-    signs_min, signs_max = np.zeros((node.nchildren, n_classes)), np.zeros((node.nchildren, n_classes))
-    for i in range(node.nchildren):
-        res_min, res_max = evaluate_rob_class(node.children[i], evi, class_var, n_classes, eps, maxclass)
-        values_min[i, :], signs_min[i, :] = res_min.value, res_min.sign
-        values_max[i, :], signs_max[i, :] = res_max.value, res_max.sign
-    res_min, res_max = signed(np.ones(n_classes), None), signed(np.ones(n_classes), None)
-    for j in range(n_classes):
-        min_j = signed(values_min[:, j], signs_min[:, j])
-        econt_min = signed_econtaminate(node.w, min_j, eps, False)
-        res_min_j = signed_prod(min_j, econt_min)
-        res_min.insert(res_min_j.reduce(), j)
-
-        max_j = signed(values_max[:, j], signs_max[:, j])
-        econt_max = signed_econtaminate(node.w, max_j, eps, True)
-        res_max_j = signed_prod(max_j, econt_max)
-        res_max.insert(res_max_j.reduce(), j)
-    return res_min, res_max
-
-
-@njit
 def evaluate_rob_class(node, evi, class_var, n_classes, eps, maxclass):
     """
         Computes the expected value of min[P(evi, y') - P(evi, maxclass)] and
@@ -674,17 +651,22 @@ def evaluate_rob_class(node, evi, class_var, n_classes, eps, maxclass):
             return new_res_min, new_res_max
         return res_min, res_max
     elif node.type == 'S':
-        # ONLY BINARY SUM NODES
-        left_up, right_up = signed(node.w[:1] * (1-eps) + eps, None), signed(node.w[1:] * (1-eps) + eps, None)
-        left_low, right_low = signed(node.w[:1] * (1-eps), None), signed(node.w[1:] * (1-eps), None)
-        left_min, left_max = evaluate_rob_class(node.children[0], evi, class_var, n_classes, eps, maxclass)
-        right_min, right_max = evaluate_rob_class(node.children[1], evi, class_var, n_classes, eps, maxclass)
-
-        val1min = signed_sum_vec(signed_prod(left_min, left_up), signed_prod(right_min, right_low))
-        val2min = signed_sum_vec(signed_prod(left_min, left_low), signed_prod(right_min, right_up))
-        val1max = signed_sum_vec(signed_prod(left_max, left_up), signed_prod(right_max, right_low))
-        val2max = signed_sum_vec(signed_prod(left_max, left_low), signed_prod(right_max, right_up))
-        res_min, res_max = signed_min_vec(val1min, val2min), signed_max_vec(val1max, val2max)
+        values_min, values_max = np.zeros((node.nchildren, n_classes)), np.zeros((node.nchildren, n_classes))
+        signs_min, signs_max = np.zeros((node.nchildren, n_classes)), np.zeros((node.nchildren, n_classes))
+        for i in range(node.nchildren):
+            res_min, res_max = evaluate_rob_class(node.children[i], evi, class_var, n_classes, eps, maxclass)
+            values_min[i, :], signs_min[i, :] = res_min.value, res_min.sign
+            values_max[i, :], signs_max[i, :] = res_max.value, res_max.sign
+        res_min, res_max = signed(np.zeros(n_classes), None), signed(np.zeros(n_classes), None)
+        for j in range(n_classes):
+            min_j = signed(values_min[:, j], signs_min[:, j])
+            econt_min = signed_econtaminate(node.w, min_j, eps, False)
+            res_min_j = signed_prod(min_j, econt_min)
+            res_min.insert(res_min_j.reduce(), j)
+            max_j = signed(values_max[:, j], signs_max[:, j])
+            econt_max = signed_econtaminate(node.w, max_j, eps, True)
+            res_max_j = signed_prod(max_j, econt_max)
+            res_max.insert(res_max_j.reduce(), j)
         return res_min, res_max
     res = signed(np.ones(evi.shape[0]), None)  # Just so numba compiles
     return res, res
@@ -732,7 +714,7 @@ def rob_loop_class(node, evi, class_var, n_classes, maxclass):
     while (lower < upper - .005) & (it <= 200):
         ok = True
         rob = (lower + upper)/2
-        min_values, max_values = eval_rob_class(node, evi, class_var, n_classes, rob, maxclass)
+        min_values, max_values = evaluate_rob_class(node, evi, class_var, n_classes, rob, maxclass)
         for j in range(n_classes):
             if j != maxclass:
                 if min_values.get(j).sign[0] <= 0:

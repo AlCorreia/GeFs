@@ -177,7 +177,7 @@ def signed_max(x, y):
     ys = y.sign[0]
     if xs > ys: return x
     if ys > xs: return y
-    if y.value[0] > x.value[0]: return y
+    if ys*y.value[0] > xs*x.value[0]: return y
     return x
 
 
@@ -187,7 +187,7 @@ def signed_min(x, y):
     ys = y.sign[0]
     if xs > ys: return y
     if ys > xs: return x
-    if y.value[0] > x.value[0]: return x
+    if ys*y.value[0] > xs*x.value[0]: return x
     return y
 
 
@@ -198,7 +198,7 @@ def signed_econtaminate(vec, signed_logprs, eps, ismax):
     if ismax:
         order = signed_logprs.argsort(False)
     else:
-        order = signed_logprs.argsort(False)
+        order = signed_logprs.argsort(True)
     for i in order:
         if room > eps:
             econt[i] = econt[i] + eps
