@@ -282,13 +282,13 @@ def get_data(name):
         data = pd.read_csv('../data/bank-additional-full.csv', sep=';')
         data, ncat = bank(data)
     elif 'segment' in name:
-        data = pd.read_csv('../data/automl/segment.csv')
+        data = pd.read_csv('../data/segment.csv')
         data, ncat = segment(data)
     elif 'german' in name:
         data = pd.read_csv('../data/german.csv', sep=' ', header=None)
         data, ncat = german(data)
     elif 'vehicle' in name:
-        data = pd.read_csv('../data/automl/vehicle.csv')
+        data = pd.read_csv('../data/vehicle.csv')
         data['Class'] = get_dummies(data['Class'])
         ncat = np.ones(data.shape[1])
         ncat[-1] = len(np.unique(data['Class']))
