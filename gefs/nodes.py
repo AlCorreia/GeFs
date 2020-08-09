@@ -208,11 +208,12 @@ def fit_multinomial(node, data, k):
     node.logp = np.log(np.asarray(node.p))
 
 
+@njit
 def fit_multinomial_with_counts(node, counts):
     assert node.type == 'M', "Node is not a multinomial leaf."
-    node.logcounts = np.log(counts)
+    node.logcounts = np.log(np.asarray(counts))
     node.p = counts/np.sum(counts)
-    node.logp = np.log(node.p)
+    node.logp = np.log(np.asarray(node.p))
 
 
 @njit
@@ -404,6 +405,10 @@ def eval_root_class(node, evi, class_var, n_classes, naive):
             Number of classes in the data
         naive: boolean
             Whether to simply propagate the counts (Friedman method).
+
+        Returns
+        -------
+        logprs: numpy array (float) of shape (n_samples, n_classes, n_trees)
     """
     n_threads = nb.config.NUMBA_DEFAULT_NUM_THREADS
     sizes = np.full(n_threads, node.nchildren // n_threads, dtype=np.int32)
@@ -554,7 +559,7 @@ def evaluate_rob_class(node, evi, class_var, n_classes, eps, maxclass):
         min[P(evi, y') - P(evi, maxclass)], where maxclass is the predicted
         class and y' is any other possible class. Because this difference might
         be negative, we need to propagate negative values through the network
-        which required signed values (signed.py).
+        which required signed values (see signed.py).
 
         Parameters
         ----------
@@ -571,6 +576,12 @@ def evaluate_rob_class(node, evi, class_var, n_classes, eps, maxclass):
             See https://arxiv.org/abs/2007.05721
         maxclass: int
             Index of the predicted class.
+
+        Returns
+        -------
+        res_min, res_max: signed arrays of size n_class
+            The minimum and maximum values the density function assumes within
+            the epsilon-contaminated set.
     """
     one = np.array([1.])
     if node.type == 'L':
@@ -731,7 +742,7 @@ def rob_loop_class(node, evi, class_var, n_classes, maxclass):
 @njit
 def nb_argmax(x, axis):
     """ Implementation of numpy.argmax in numba. """
-    assert (axis==0) | (axis==1), "axis must be set to either 0 or 1"
+    assert (axis==0) | (axis==1), "axis must be set to either 0 or 1."
     if axis == 0:
         res = np.zeros(x.shape[1], dtype=np.int64)
         for i in range(x.shape[1]):
@@ -741,3 +752,18 @@ def nb_argmax(x, axis):
         for i in range(x.shape[0]):
             res[i] = np.argmax(x[i, :])
     return res
+
+
+@njit
+def nb_argsort(x, axis):
+    """ Implementation of numpy.argsort in numba. """
+    assert (axis==0) | (axis==1), "axis must be set to either 0 or 1."
+    ordered = np.zeros_like(x)
+    if axis == 0:
+        for i in range(x.shape[1]):
+            ordered[:, i] = np.argsort(x[:, i])
+        return ordered
+    elif axis == 1:
+        for i in range(x.shape[0]):
+            ordered[i, :] = np.argsort(x[i, :])
+        return ordered
