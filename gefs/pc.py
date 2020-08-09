@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.stats as stats
 
-from .learning import LearnSPN
+from .learning import LearnSPN, fit
 from .nodes import SumNode, ProdNode, Leaf, GaussianLeaf, eval_root, eval_root_children, eval_root_class, delete
 from .utils import logsumexp3
 
@@ -22,11 +22,21 @@ class PC:
             Currently, only LearnSPN (Gens and Domingos, 2013).
     """
 
-    def __init__(self):
+    def __init__(self, ncat=None):
+        self.ncat = ncat
         self.root = None
         self.maxv = None
         self.minv = None
         self.n_nodes = 0
+
+
+    def learnspn(self, data, ncat=None, thr=0.001, nclusters=2, max_height=1000000, classcol=None):
+        if ncat is not None:
+            self.ncat = ncat
+        assert self.ncat is not None, "You must provide `ncat`, the number of categories of each class."
+        learner = LearnSPN(self.ncat, thr, nclusters, max_height, classcol)
+        self.root = fit(learner, data)
+
 
     def set_topological_order(self):
         """
