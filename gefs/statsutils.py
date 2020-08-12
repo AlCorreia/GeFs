@@ -124,16 +124,16 @@ def kendalltau(x, y, use_ties=True, use_missing=True, method='auto'):
 
     tau = (C-D) / denom
 
-    if method == 'exact' and (xties or yties):
+    if method == 'exact' and (len(xties) > 0 or len(yties) > 0):
         raise ValueError("Ties found, exact method cannot be used.")
 
     if method == 'auto':
-        if (not xties and not yties) and (n <= 33 or min(C, n*(n-1)/2.0-C) <= 1):
+        if (len(xties) == 0 and len(yties) == 0) and (n <= 33 or min(C, n*(n-1)/2.0-C) <= 1):
             method = 'exact'
         else:
             method = 'asymptotic'
 
-    if not xties and not yties and method == 'exact':
+    if len(xties) == 0 and len(yties) == 0 and method == 'exact':
         # Exact p-value, see Maurice G. Kendall, "Rank Correlation Methods" (4th Edition), Charles Griffin & Co., 1970.
         c = int(min(C, (n*(n-1))/2-C))
         if n <= 0:
@@ -359,9 +359,9 @@ def count_tied_groups(x, use_missing=False):
             nties[k[i]] = v[i]
 
     if nmasked and use_missing:
-        try:
+        if nties.get(nmasked) is not None:
             nties[nmasked] += 1
-        except:
+        else:
             nties[nmasked] = 1
 
     corr = 0
