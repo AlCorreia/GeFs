@@ -10,13 +10,30 @@ from .statsutils import chi_test, kruskal, kendalltau
 
 @njit
 def resample_strat(x, y, n_classes):
+    """
+    Resampling (bootstrapping) of x stratified according to y.
+
+    Parameters
+    ----------
+    x: numpy array
+        Typically a matrix nxm with n samples and m variables.
+    y: numpy array (1D)
+        The class variable we are stratifying against.
+    n_classes: int
+        The number of classes in y.
+
+    Returns
+    -------
+    x, y: numpy arrays
+        In-bag samples.
+    """
     idx = np.arange(x.shape[0], dtype=np.int64)
     counts = bincount(y, n_classes)
     selected_idx = np.empty(0, dtype=np.int64)
     for i in range(n_classes):
         s = np.random.choice(idx[y==i], counts[i], replace=True)
         selected_idx = np.concatenate((selected_idx, s))
-    return x[selected_idx, :], y[selected_idx]
+    return x[selected_idx, :], y[selected_idx], selected_idx
 
 
 # numba implementation of numpy.isin
@@ -129,14 +146,15 @@ def isin_arr(arr, b):
 def lse(a):
     """ Computes logsumexp in a 1D array. """
     result = 0.0
-    largest_in_a= a[0]
+    largest_in_a = a[0]
     for i in range(a.shape[0]):
-        if (a[i] > largest_in_a):
+        if (not np.isnan(a[i])) and ((a[i] > largest_in_a) or np.isnan(largest_in_a)):
             largest_in_a = a[i]
     if largest_in_a == -np.inf:
         return a[0]
     for i in range(a.shape[0]):
-        result += np.exp(a[i] - largest_in_a)
+        if not np.isnan(a[i]):
+            result += np.exp(a[i] - largest_in_a)
     return np.log(result) + largest_in_a
 
 
