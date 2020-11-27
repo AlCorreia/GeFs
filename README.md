@@ -61,8 +61,9 @@ If you find GeFs useful please consider citing us in your work
 ```
 @article{correia2020joints,
   title={Joints in Random Forests},
-  author={Correia, A. H. C. and Peharz, R. and de Campos, C. P.},
-  journal={arXiv preprint arXiv:2006.14937},
+  author={Correia, A. H. C. and Peharz, Robert and de Campos, C. P.},
+  journal={Advances in Neural Information Processing Systems},
+  volume={33},
   year={2020}
 }
 
