@@ -1,5 +1,4 @@
 import numpy as np
-import scipy.stats as stats
 
 from .learning import LearnSPN, fit
 from .nodes import SumNode, ProdNode, Leaf, GaussianLeaf, eval_root, eval_root_children, eval_root_class, delete

@@ -1,8 +1,6 @@
-from numba import jit, njit, float64, int64, optional
+from numba import njit, float64, int64, optional
 from numba.experimental import jitclass
 import numpy as np
-import random
-import time
 
 from .cluster import cluster
 from .nodes import SumNode, ProdNode, Leaf, GaussianLeaf, MultinomialLeaf, fit_gaussian, fit_multinomial

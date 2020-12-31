@@ -1,4 +1,4 @@
-from numba import jit, njit, boolean, int64, float64
+from numba import njit, boolean, int64, float64
 from numba.experimental import jitclass
 import numpy as np
 

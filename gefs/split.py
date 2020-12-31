@@ -1,10 +1,8 @@
 from collections import OrderedDict
 from math import erf, floor
-from numba import jit, njit, uint32, int64, float32, float64, optional, prange, deferred_type, types, boolean
+from numba import njit, int64, float64, optional, prange, deferred_type, types, boolean
 from numba.experimental import jitclass
 import numpy as np
-import random
-import scipy.stats as stats
 
 from .utils import isin_nb
 

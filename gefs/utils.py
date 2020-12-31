@@ -1,9 +1,7 @@
-from collections import OrderedDict
-from math import erf, floor
+from math import erf
 import numba as nb
-from numba import jit, njit, prange, jitclass
+from numba import njit
 import numpy as np
-import random
 import scipy.stats as stats
 from .statsutils import chi_test, kruskal, kendalltau
 

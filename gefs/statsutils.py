@@ -4,7 +4,6 @@ import numba as nb
 from numba import njit, vectorize, uint64
 from numba.extending import get_cython_function_address
 import numpy as np
-import pandas as pd
 
 
 addr = get_cython_function_address("scipy.special.cython_special", "chdtrc")

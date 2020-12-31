@@ -1,20 +1,16 @@
-from collections import OrderedDict
-from functools import reduce
 from math import floor
 import numba as nb
-from numba import jit, njit, int16, int32, float32, int64, float64, optional, prange, deferred_type, types, boolean
+from numba import njit, int16, int64, float64, optional, prange, deferred_type, types, boolean
 from numba.typed import List
 from numba.experimental import jitclass
-import numba as nb
 import numpy as np
 import operator
 import random
 from scipy import stats
-import time
 from tqdm import tqdm
 
 from .learning import LearnSPN, fit
-from .nodes import SumNode, ProdNode, Leaf, GaussianLeaf, MultinomialLeaf, UniformLeaf, fit_multinomial, fit_multinomial_with_counts, fit_gaussian
+from .nodes import SumNode, ProdNode, Leaf, GaussianLeaf, MultinomialLeaf, fit_multinomial, fit_gaussian
 from .pc import PC
 from .utils import bincount, isin_nb, resample_strat
 from .split import find_best_split, Split

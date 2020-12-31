@@ -1,11 +1,9 @@
 from collections import OrderedDict
-from math import erf
-from numba import jit, njit, boolean, int64, float64, deferred_type, optional, types, prange
+from numba import njit, boolean, int64, float64, deferred_type, optional, types, prange
 from numba.experimental import jitclass
 import numba as nb
 import numpy as np
-import pandas as pd
-import scipy.stats as stats
+
 
 from .signed import (signed, signed_max, signed_min, signed_max_vec, signed_min_vec,
                     signed_prod, signed_sum, signed_sum_vec, signed_econtaminate, signed_join)
