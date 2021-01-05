@@ -162,22 +162,17 @@ def build_forest(X, y, n_estimators, bootstrap, ncat, imp_measure,
                        max_features, max_depth, surrogate)
                   for i in range(n_estimators)]
 
-    if n_estimators < n_threads:
-        for i in prange(n_estimators):
+    sizes = np.full(n_threads, n_estimators // n_threads, dtype=np.int64)
+    sizes[:n_estimators % n_threads] += 1
+    offset_in_buffers = np.zeros(n_threads, dtype=np.int64)
+    offset_in_buffers[1:] = np.cumsum(sizes[:-1])
+
+    for thread_idx in prange(n_threads):
+        start = offset_in_buffers[thread_idx]
+        stop = start + sizes[thread_idx]
+        for i in range(start, stop):
             Xtree_, ytree_, _ = resample_strat(X, y, n_classes)
             estimators[i].fit(Xtree_, ytree_)
-    else:
-        sizes = np.full(n_threads, n_estimators // n_threads, dtype=np.int64)
-        sizes[:n_estimators % n_threads] += 1
-        offset_in_buffers = np.zeros(n_threads, dtype=np.int64)
-        offset_in_buffers[1:] = np.cumsum(sizes[:-1])
-
-        for thread_idx in prange(n_threads):
-            start = offset_in_buffers[thread_idx]
-            stop = start + sizes[thread_idx]
-            for i in range(start, stop):
-                Xtree_, ytree_, _ = resample_strat(X, y, n_classes)
-                estimators[i].fit(Xtree_, ytree_)
     return estimators
 
 
