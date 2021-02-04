@@ -54,7 +54,7 @@ logs = gef.log_likelihood(data_test)
 ```
 Here if `data_test` is a matrix of n observations and m variables, `logs` will be an array of size n, containing `log(p(x))` for each observarion `x` in `data_test`.
 
-## Refereces
+## References
 
 If you find GeFs useful please consider citing us in your work
 
