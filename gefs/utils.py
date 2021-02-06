@@ -111,7 +111,7 @@ def phi(x, mean, std):
 def logtrunc_phi(x, loc, scale, a, b):
     """
         Computes the log-density at `x` of a normal distribution with mean `loc` and
-        variance `scale` truncated at `a` and `b`.
+        standard deviation `scale` truncated at `a` and `b`.
     """
     res = np.ones(x.shape[0], dtype=np.float64)
     denom = (Phi(b, loc, scale) - Phi(a, loc, scale))

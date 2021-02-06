@@ -16,7 +16,7 @@ def random_split(x):
     return x[left_ids], x[~left_ids]
 
 
-@njit('int64[:](int64[:],int64)', fastmath=True, inline='always', boundscheck=False)
+@njit(fastmath=True, inline='always', boundscheck=False)
 def bincount(data, n):
     counts = np.zeros(n, dtype=np.int64)
     for j in prange(data.size):
@@ -28,7 +28,7 @@ def bincount(data, n):
 ##### IMPURITY MEASURES #####
 #############################
 
-@njit("float64(int64[:])")
+@njit
 def gini(counts):
     """
         Computes the gini score in the distribution of classes.
@@ -38,7 +38,7 @@ def gini(counts):
     return np.sum(p*(p-1))
 
 
-@njit("float64(int64[:])")
+@njit
 def entropy(counts):
     """
         Computes the entropy in the distribution of classes.
@@ -48,7 +48,7 @@ def entropy(counts):
     return np.sum(p*np.log2(p))
 
 
-@njit("float64(int64[:])")
+@njit
 def purity(counts):
     """
         Purity is a measure defined by the ratio between the number of counts
@@ -60,7 +60,7 @@ def purity(counts):
     return np.max(counts)/np.sum(counts)
 
 
-@njit("float64(int64[:],int64[:],types.string)", fastmath=True)
+@njit(fastmath=True)
 def gain(left_counts, right_counts, imp_measure):
     """
         Computes the gain of a split.
@@ -83,7 +83,7 @@ def gain(left_counts, right_counts, imp_measure):
         return -np.Inf
 
 
-@njit("f8(i8[:],i8[:],i8)", fastmath=True, inline='always')
+@njit(fastmath=True, inline='always')
 def gini_gain(left_counts, right_counts, n):
     total_left = 0
     total_right = 0
