@@ -7,7 +7,8 @@ import numpy as np
 
 from .signed import (signed, signed_max, signed_min, signed_max_vec, signed_min_vec,
                     signed_prod, signed_sum, signed_sum_vec, signed_econtaminate, signed_join)
-from .utils import bincount, logtrunc_phi, isin, isin_arr, lse, logsumexp2, logsumexp3
+from .utils import (bincount, logtrunc_phi, isin, isin_arr, lse, logsumexp2,
+                    logsumexp3, nb_argmax, nb_argsort, categorical, sample_trunc_phi)
 
 
 node_type = deferred_type()
@@ -292,8 +293,13 @@ def eval_m(node, evi):
     s = node.scope[0]
     res = np.zeros(evi.shape[0], dtype=np.float64)
     for i in range(evi.shape[0]):
-        if not np.isnan(evi[i, s]):
-            res[i] = node.logp[int(evi[i, s])]
+        obs = evi[i, s]
+        if not np.isnan(obs):
+            if obs >= len(node.p):
+                print("Previously unobserved category for variable ", s)
+                res[i] = np.log(1e-6)  # return a low probability value
+            else:
+                res[i] = node.logp[int(evi[i, s])]
     return res
 
 
@@ -737,31 +743,33 @@ def rob_loop_class(node, evi, class_var, n_classes, maxclass):
     return rob
 
 
-@njit
-def nb_argmax(x, axis):
-    """ Implementation of numpy.argmax in numba. """
-    assert (axis==0) | (axis==1), "axis must be set to either 0 or 1."
-    if axis == 0:
-        res = np.zeros(x.shape[1], dtype=np.int64)
-        for i in range(x.shape[1]):
-            res[i] = np.argmax(x[:, i])
-    elif axis == 1:
-        res = np.zeros(x.shape[0], dtype=np.int64)
-        for i in range(x.shape[0]):
-            res[i] = np.argmax(x[i, :])
+@njit(parallel=True)
+def sample(node, n_samples=1):
+    res = np.zeros((n_samples, len(node.scope)))
+    for i in prange(n_samples):
+        sample_aux(node, res[i, :])
     return res
 
 
 @njit
-def nb_argsort(x, axis):
-    """ Implementation of numpy.argsort in numba. """
-    assert (axis==0) | (axis==1), "axis must be set to either 0 or 1."
-    ordered = np.zeros_like(x)
-    if axis == 0:
-        for i in range(x.shape[1]):
-            ordered[:, i] = np.argsort(x[:, i])
-        return ordered
-    elif axis == 1:
-        for i in range(x.shape[0]):
-            ordered[i, :] = np.argsort(x[i, :])
-        return ordered
+def sample_aux(node, res=None):
+    """
+        Returns one sample from the distribution defined by the PC rooted at node.
+    """
+    if res is None:
+        res = np.zeros(len(node.scope))
+    if node.type == 'S':
+        index = categorical(node.w)[0]
+        return sample_aux(node.children[index], res)
+    elif node.type == 'P':
+        for child in node.children:
+            resi = sample_aux(child, res)
+            res[child.scope] = resi[child.scope]
+        return res
+    elif node.type == 'G':
+        res[node.scope] = sample_trunc_phi(node.mean, node.std, node.a, node.b)
+        return res
+    elif node.type == 'M':
+        res[node.scope] = categorical(node.p)[0]
+        return res
+    return res

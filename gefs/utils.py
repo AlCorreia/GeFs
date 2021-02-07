@@ -1,9 +1,16 @@
+import ctypes
 from math import erf
 import numba as nb
 from numba import njit
+from numba.extending import get_cython_function_address
 import numpy as np
 import scipy.stats as stats
 from .statsutils import chi_test, kruskal, kendalltau
+
+# Import erfinv from scipy special into numba
+addr = get_cython_function_address("scipy.special.cython_special", "erfinv")
+functype = ctypes.CFUNCTYPE(ctypes.c_double, ctypes.c_double)
+erfinv_fn = functype(addr)
 
 
 @njit
@@ -100,6 +107,14 @@ def Phi(x, mean, std):
 
 
 @njit
+def Phi_inv(p, loc, scale):
+    """
+        Percent Point Function (inverse cdf) of normal distribution.
+    """
+    return loc + scale * np.sqrt(2) * erfinv_fn(2*p -1)
+
+
+@njit
 def phi(x, mean, std):
     """ Cumulative distribution for normal distribution defined by mean and std. """
     denom = np.sqrt(2*np.pi)*std
@@ -123,6 +138,27 @@ def logtrunc_phi(x, loc, scale, a, b):
     return res
 
 
+@njit
+def sample_trunc_phi(loc, scale, a, b):
+    """
+        Sample from a truncated Gaussian with mean loc and standard
+        deviation scale defined in the interval [a, b].
+    """
+    p = np.random.uniform(0, 1)
+    Pa = Phi(a, loc, scale)
+    Pb = Phi(b, loc, scale)
+    p = Pa + p * (Pb-Pa)
+    return Phi_inv(p, loc, scale)
+
+
+@njit
+def categorical(p, n_samples=1):
+    """
+        Return n_samples from a categorical distribution defined by p.
+    """
+    return nb_argmax(np.cumsum(p) >= np.random.uniform(0, 1, size=n_samples).reshape(n_samples, -1), axis=1)
+
+
 @njit(fastmath=True)
 def isin(a, b):
     """ Returns True if a in b. """
@@ -138,6 +174,36 @@ def isin_arr(arr, b):
     for i in nb.prange(arr.shape[0]):
         res[i] = isin(arr[i], b)
     return res
+
+
+@njit
+def nb_argmax(x, axis):
+    """ Implementation of numpy.argmax in numba. """
+    assert (axis==0) | (axis==1), "axis must be set to either 0 or 1."
+    if axis == 0:
+        res = np.zeros(x.shape[1], dtype=np.int64)
+        for i in range(x.shape[1]):
+            res[i] = np.argmax(x[:, i])
+    elif axis == 1:
+        res = np.zeros(x.shape[0], dtype=np.int64)
+        for i in range(x.shape[0]):
+            res[i] = np.argmax(x[i, :])
+    return res
+
+
+@njit
+def nb_argsort(x, axis):
+    """ Implementation of numpy.argsort in numba. """
+    assert (axis==0) | (axis==1), "axis must be set to either 0 or 1."
+    ordered = np.zeros_like(x)
+    if axis == 0:
+        for i in range(x.shape[1]):
+            ordered[:, i] = np.argsort(x[:, i])
+        return ordered
+    elif axis == 1:
+        for i in range(x.shape[0]):
+            ordered[i, :] = np.argsort(x[i, :])
+        return ordered
 
 
 @njit

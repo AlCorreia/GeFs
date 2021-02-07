@@ -1,7 +1,8 @@
 import numpy as np
 
 from .learning import LearnSPN, fit
-from .nodes import SumNode, ProdNode, Leaf, GaussianLeaf, eval_root, eval_root_children, eval_root_class, delete
+from .nodes import (SumNode, ProdNode, Leaf, GaussianLeaf, eval_root,
+                    eval_root_children, eval_root_class, sample, delete)
 from .utils import logsumexp3
 
 
@@ -293,6 +294,10 @@ class PC:
         if return_prob:
             return maxclass, agg
         return maxclass
+
+    def sample(self, n_samples=1):
+        """ Returns one sample from the """
+        return sample(self.root, n_samples)
 
     def clear(self):
         """ Deletes the structure of the PC. """
