@@ -91,7 +91,7 @@ class PC:
         ll = self.log_likelihood(data)
         return np.exp(ll)
 
-    def classify(self, X, classcol, return_prob=False):
+    def classify(self, X, classcol=None, return_prob=False):
         """
             Classifies instances running proper PC inference, that is,
             argmax_y P(X, Y=y).
@@ -100,17 +100,33 @@ class PC:
             ----------
 
             X: numpy array
-                Input data not including the class variable.
+                Input data not including the variable to be predicted.
+                The data should be ordered as in training, excluding the
+                variable to be predicted (see example).
                 Missing values should be set to numpy.nan
             classcol: int
-                The original index of the class variable.
+                The index of the class to be predicted. If None, the model
+                predicts the original target variable y (last column).
             return_prob: boolean
                 Whether to return the conditional probability of each class.
+            Example
+            -------
+            If a model is defined over 5 variables and one wants to predict
+            variable 2, then the columns of X should contain observations of
+            variables 0, 1, 3, and 4 in that order.
         """
+        nclass = int(self.ncat[classcol])
+        assert nclass > 1, "Only categorical variables can be classified."
         eps = 1e-6
+        X = X.copy()
         if X.ndim == 1:
             X = np.expand_dims(X, axis=0)
-        nclass = int(self.ncat[classcol])
+        if classcol is None:
+            classcol = len(self.ncat)
+        # If not predicting the default target class (assumed to be the last column)
+        # use the other classify function.
+        if classcol != len(self.ncat):
+            return self.classify_lspn(X, classcol, return_prob)
         joints = eval_root_class(self.root, X, classcol, nclass, naive=False)
         joints = logsumexp3(joints, axis=2)
         joints_minus_max = joints - np.max(joints, axis=1, keepdims=True)
@@ -120,7 +136,7 @@ class PC:
             return np.argmax(probs, axis=1), probs
         return np.argmax(probs, axis=1)
 
-    def classify_avg(self, X, classcol, return_prob=False, naive=False):
+    def classify_avg(self, X, classcol=None, return_prob=False, naive=False):
         """
             Classifies instances by taking the average of the conditional
             probabilities defined by each PC, that is,
@@ -133,22 +149,37 @@ class PC:
             ----------
 
             X: numpy array
-                Input data not including the class variable.
+                Input data not including the variable to be predicted.
+                The data should be ordered as in training, excluding the
+                variable to be predicted (see example).
                 Missing values should be set to numpy.nan
             classcol: int
-                The original index of the class variable.
+                The index of the class to be predicted. If None, the model
+                predicts the original target variable y (last column).
             return_prob: boolean
                 Whether to return the conditional probability of each class.
             naive: boolean
                 Whether to treat missing values as suggested by  Friedman in 1975,
                 that is, by taking the argmax over the counts of all pertinent
                 cells.
-            """
+            Example
+            -------
+            If a model is defined over 5 variables and one wants to predict
+            variable 2, then the columns of X should contain observations of
+            variables 0, 1, 3, and 4 in that order.
+        """
+        nclass = int(self.ncat[classcol])
+        assert nclass > 1, "Only categorical variables can be classified."
         eps = 1e-6
+        X = X.copy()
         if X.ndim == 1:
             X = np.expand_dims(X, axis=0)
-        nclass = int(self.ncat[classcol])
-        # joints = np.zeros((X.shape[0], nclass, self.root.nchildren))
+        if classcol is None:
+            classcol = len(self.ncat)
+        # If not predicting the default target class (assumed to be the last column)
+        # use the other classify function.
+        if classcol != len(self.ncat):
+            return self.classify_avg_lspn(X, classcol, return_prob)
         joints = eval_root_class(self.root, X, classcol, nclass, naive)
         if naive:
             counts = np.exp(joints).astype(int)  # int to filter out the smoothing
@@ -166,7 +197,7 @@ class PC:
             return maxclass, agg
         return maxclass
 
-    def classify_lspn(self, X, classcol, return_prob=False):
+    def classify_lspn(self, X, classcol=None, return_prob=False):
         """
             Classifies instances running proper PC inference, that is,
             argmax_y P(X, Y=y).
@@ -175,27 +206,39 @@ class PC:
             ----------
 
             X: numpy array
-                Input data not including the class variable.
+                Input data not including the variable to be predicted.
+                The data should be ordered as in training, excluding the
+                variable to be predicted (see example).
                 Missing values should be set to numpy.nan
             classcol: int
-                The original index of the class variable.
+                The index of the class to be predicted. If None, the model
+                predicts the original target variable y (last column).
             return_prob: boolean
                 Whether to return the conditional probability of each class.
             naive: boolean
                 Whether to treat missing values as suggested in Friedman1975,
                 that is, by taking the argmax over the counts of all pertinent
                 cells.
+
+            Example
+            -------
+            If a model is defined over 5 variables and one wants to predict
+            variable 2, then the columns of X should contain observations of
+            variables 0, 1, 3, and 4 in that order.
         """
+        nclass = int(self.ncat[classcol])
+        assert nclass > 1, "Only categorical variables can be classified."
         eps = 1e-6
         if X.ndim == 1:
             X = np.expand_dims(X, axis=0)
-        nclass = int(self.ncat[classcol])
+        if classcol is None:
+            classcol = len(self.ncat)
         maxclass = np.zeros(X.shape[0])-1
         maxlogpr = np.zeros(X.shape[0])-np.Inf
         joints = np.zeros((X.shape[0], nclass))
         for i in range(nclass):
-            iclass = np.zeros((X.shape[0], 1)) + i
-            Xi = np.append(X, iclass, axis=1)
+            iclass = np.zeros(X.shape[0]) + i
+            Xi = np.insert(X, classcol, iclass, axis=1)
             joints[:, i] = np.squeeze(eval_root(self.root, Xi))
         joints_minus_max = joints - np.max(joints, axis=1, keepdims=True)
         probs = np.where(np.exp(joints_minus_max) >= (np.log(eps) - np.log(nclass)), np.exp(joints_minus_max), 0)
@@ -204,7 +247,7 @@ class PC:
             return np.argmax(probs, axis=1), probs
         return np.argmax(probs, axis=1)
 
-    def classify_avg_lspn(self, X, classcol, return_prob=False):
+    def classify_avg_lspn(self, X, classcol=None, return_prob=False):
         """
             Classifies instances by taking the average of the conditional
             probabilities defined by each tree, that is,
@@ -216,19 +259,31 @@ class PC:
             ----------
 
             X: numpy array
-                Input data not including the class variable.
+                Input data not including the variable to be predicted.
+                The data should be ordered as in training, excluding the
+                variable to be predicted (see example).
                 Missing values should be set to numpy.nan
             classcol: int
-                The original index of the class variable.
+                The index of the class to be predicted. If None, the model
+                predicts the original target variable y (last column).
             return_prob: boolean
                 Whether to return the conditional probability of each class.
+
+            Example
+            -------
+            If a model is defined over 5 variables and one wants to predict
+            variable 2, then the columns of X should contain observations of
+            variables 0, 1, 3, and 4 in that order.
         """
-        eps = 1e-6
         nclass = int(self.ncat[classcol])
+        assert nclass > 1, "Only categorical variables can be classified."
+        eps = 1e-6
+        if classcol is None:
+            classcol = len(self.ncat)
         joints = np.zeros((X.shape[0], self.root.nchildren, nclass))
         for i in range(nclass):
-            iclass = np.zeros((X.shape[0], 1)) + i
-            Xi = np.append(X, iclass, axis=1)
+            iclass = np.zeros(X.shape[0]) + i
+            Xi = np.insert(X, classcol, iclass, axis=1)
             joints[:, :, i] = eval_root_children(self.root, Xi)
         joints_minus_max = joints - np.max(joints, axis=2, keepdims=True)
         probs = np.where(np.exp(joints_minus_max) >= (np.log(eps) - np.log(nclass)), np.exp(joints_minus_max), 0)
