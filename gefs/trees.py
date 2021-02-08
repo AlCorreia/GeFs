@@ -198,8 +198,9 @@ def add_split(tree_node, pc_node, ncat, root=False):
     if root:
         sumnode = pc_node
     else:
-        sumnode = SumNode(scope=scope, parent=pc_node,
+        sumnode = SumNode(scope=scope,
                           n=n_points_left+n_points_right+lp)
+        pc_node.add_child(sumnode)
     upper1 = pc_node.upper.copy()
     lower1 = pc_node.lower.copy()
     upper2 = pc_node.upper.copy()
@@ -211,29 +212,37 @@ def add_split(tree_node, pc_node, ncat, root=False):
 
         upper1[split_col] = len(split_value)  # upper: number of variables in
         lower1[split_col] = len(out_split_value)  # lower: number of variables out
-        p1 = ProdNode(scope=scope, parent=sumnode, n=n_points_left+lp)
+        p1 = ProdNode(scope=scope, n=n_points_left+lp)
         p1.upper, p1.lower = upper1, lower1
-        ind1 = Leaf(scope=np.array([split_col]), parent=p1, n=n_points_left+lp,
+        sumnode.add_child(p1)
+        ind1 = Leaf(scope=np.array([split_col]), n=n_points_left+lp,
                     value=split_value, comparison=0)  # Comparison IN
+        p1.add_child(ind1)
 
         upper2[split_col] = len(out_split_value)  # upper: number of variables in
         lower2[split_col] = len(split_value)  # lower: number of variables out
-        p2 = ProdNode(scope=scope, parent=sumnode, n=n_points_right+lp)
+        p2 = ProdNode(scope=scope, n=n_points_right+lp)
+        sumnode.add_child(p2)
         p2.upper, p2.lower = upper2, lower2
-        ind2 = Leaf(scope=np.array([split_col]), parent=p2, n=n_points_right+lp,
+        ind2 = Leaf(scope=np.array([split_col]), n=n_points_right+lp,
                     value=out_split_value, comparison=0)  # Comparison IN
+        p2.add_child(ind2)
     else:
         upper1[split_col] = min(split_value[0], upper1[split_col])
-        p1 = ProdNode(scope=scope, parent=sumnode, n=n_points_left+lp)
+        p1 = ProdNode(scope=scope, n=n_points_left+lp)
+        sumnode.add_child(p1)
         p1.upper, p1.lower = upper1, lower1
-        ind1 = Leaf(scope=np.array([split_col]), parent=p1, n=n_points_left+lp,
+        ind1 = Leaf(scope=np.array([split_col]), n=n_points_left+lp,
                     value=split_value, comparison=3)  # Comparison <=
+        p1.add_child(ind1)
 
         lower2[split_col] = max(split_value[0], lower2[split_col])
-        p2 = ProdNode(scope=scope, parent=sumnode, n=n_points_right+lp)
+        p2 = ProdNode(scope=scope, n=n_points_right+lp)
+        sumnode.add_child(p2)
         p2.upper, p2.lower = upper2, lower2
-        ind2 = Leaf(scope=np.array([split_col]), parent=p2, n=n_points_right+lp,
+        ind2 = Leaf(scope=np.array([split_col]), n=n_points_right+lp,
                     value=split_value, comparison=4)  # Comparison >
+        p2.add_child(ind2)
     return p1, p2
 
 
@@ -275,10 +284,12 @@ def add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr):
     else:
         for var in scope:
             if ncat[var] > 1:
-                leaf = MultinomialLeaf(pc_node, np.array([var]), n_points+lp)
+                leaf = MultinomialLeaf(np.array([var]), n_points+lp)
+                pc_node.add_child(leaf)
                 fit_multinomial(leaf, data_leaf, int(ncat[var]))
             else:
-                leaf = GaussianLeaf(pc_node, np.array([var]), n_points+lp)
+                leaf = GaussianLeaf(np.array([var]), n_points+lp)
+                pc_node.add_child(leaf)
                 fit_gaussian(leaf, data_leaf, upper[var], lower[var])
         return None
 
@@ -313,7 +324,7 @@ def tree2pc(tree, learnspn=np.Inf, max_height=1000000, thr=0.01):
     classcol = len(ncat)-1
     # Create a new PC with a Sum node as root.
     pc = PC()
-    pc_node = SumNode(scope=scope, parent=None, n=data.shape[0]+lp)
+    pc_node = SumNode(scope=scope, n=data.shape[0]+lp)
     pc.root = pc_node
     pc.ncat = ncat
     tree_queue = [tree.root]
@@ -519,7 +530,7 @@ class RandomForest:
                 assigned to the same cluster.
         """
         pc = PC()
-        pc.root = SumNode(scope=self.scope, parent=None, n=1)
+        pc.root = SumNode(scope=self.scope, n=1)
         for estimator in tqdm(self.estimators):
             tree_pc = tree2pc(estimator, learnspn=learnspn, max_height=max_height, thr=thr)
             pc.root.add_child(tree_pc.root)

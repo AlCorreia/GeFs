@@ -15,10 +15,10 @@ node_type = deferred_type()
 
 spec = OrderedDict()
 spec['id'] = int64
-spec['parent'] = optional(node_type)
 spec['left_child'] = optional(node_type)  # first child
 spec['right_child'] = optional(node_type) # last child
 spec['sibling'] = optional(node_type)  # next sibling
+spec['nchildren'] = int64
 
 spec['scope'] = int64[:]
 spec['type'] = types.unicode_type
@@ -40,18 +40,16 @@ spec['lower'] = float64[:]
 
 @jitclass(spec)
 class Node:
-    def __init__(self, parent, scope, type, n):
+    def __init__(self, scope, type, n):
         self.id = np.random.randint(0, 10000000) # Random identification number
-        self.parent = parent
-        # initialize parent and left right children as None
+        # initialize left and right children as None
         self.left_child = None
         self.right_child = None
         self.sibling = None
+        self.nchildren = 0
         self.scope = scope
         self.type = type
         self.n = n
-        if parent is not None:
-            parent.add_child(self)
         # Sum params
         self.w = None
         self.logw = None
@@ -79,10 +77,6 @@ class Node:
             child = child.sibling
         return children
 
-    @property
-    def nchildren(self):
-        return len(self.children)
-
     def add_sibling(self, sibling):
         self.sibling = sibling
 
@@ -98,6 +92,7 @@ class Node:
             self.right_child = child
         if self.type == 'S':
             self.reweight()
+        self.nchildren += 1
 
     def reweight(self):
         children_n = np.array([c.n for c in self.children])
@@ -116,30 +111,30 @@ node_type.define(Node.class_type.instance_type)
 ###########################
 
 @njit
-def ProdNode(parent, scope, n):
-    return Node(parent, scope, 'P', n)
+def ProdNode(scope, n):
+    return Node(scope, 'P', n)
 
 @njit
-def SumNode(parent, scope, n):
-    return Node(parent, scope, 'S', n)
+def SumNode(scope, n):
+    return Node(scope, 'S', n)
 
 @njit
-def Leaf(parent, scope, n, value, comparison):
-    node = Node(parent, scope, 'L', n)
+def Leaf(scope, n, value, comparison):
+    node = Node(scope, 'L', n)
     fit_indicator(node, value, comparison)
     return node
 
 @njit
-def GaussianLeaf(parent, scope, n):
-    return Node(parent, scope, 'G', n)
+def GaussianLeaf(scope, n):
+    return Node(scope, 'G', n)
 
 @njit
-def MultinomialLeaf(parent, scope, n):
-    return Node(parent, scope, 'M', n)
+def MultinomialLeaf(scope, n):
+    return Node(scope, 'M', n)
 
 @njit
-def UniformLeaf(parent, scope, n, value):
-    node = Node(parent, scope, 'U', n)
+def UniformLeaf(scope, n, value):
+    node = Node(scope, 'U', n)
     node.value = value
     return node
 
@@ -160,7 +155,6 @@ def n_nodes(node):
 def delete(node):
     for c in node.children:
         delete(c)
-    node.parent = None
     node.left_child = None
     node.right_child = None
     node.sibling = None

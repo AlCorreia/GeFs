@@ -1,8 +1,7 @@
 import numpy as np
 
 from .learning import LearnSPN, fit
-from .nodes import (SumNode, ProdNode, Leaf, GaussianLeaf, eval_root,
-                    eval_root_children, eval_root_class, sample, delete)
+from .nodes import eval_root, eval_root_children, eval_root_class, sample, delete
 from .utils import logsumexp3
 
 
@@ -116,23 +115,31 @@ class PC:
             variable 2, then the columns of X should contain observations of
             variables 0, 1, 3, and 4 in that order.
         """
+        eps = 1e-6
+        if classcol is None:
+            classcol = len(self.ncat)-1
         nclass = int(self.ncat[classcol])
         assert nclass > 1, "Only categorical variables can be classified."
-        eps = 1e-6
         X = X.copy()
         if X.ndim == 1:
             X = np.expand_dims(X, axis=0)
-        if classcol is None:
-            classcol = len(self.ncat)
         # If not predicting the default target class (assumed to be the last column)
         # use the other classify function.
         if classcol != len(self.ncat):
             return self.classify_lspn(X, classcol, return_prob)
         joints = eval_root_class(self.root, X, classcol, nclass, naive=False)
         joints = logsumexp3(joints, axis=2)
-        joints_minus_max = joints - np.max(joints, axis=1, keepdims=True)
+        max_values = np.max(joints, axis=1, keepdims=True)
+        max_values = np.where(np.isfinite(max_values), max_values, 0)
+        joints_minus_max = joints - max_values
         probs = np.where(np.exp(joints_minus_max) >= (np.log(eps) - np.log(nclass)), np.exp(joints_minus_max), 0)
-        probs = probs/probs.sum(axis=1, keepdims=True)
+        prob_sum = np.sum(probs, keepdims=True, axis=1)
+        # Treat cases where all classes have low probability.
+        unlikely_ones = np.where(prob_sum == 0)[0]
+        if len(unlikely_ones) > 0:
+            print("Low density samples found at indices ", unlikely_ones, ". Probably out-of-domain samples.")
+            prob_sum[unlikely_ones, :] += 1e-12
+        probs = probs/prob_sum
         if return_prob:
             return np.argmax(probs, axis=1), probs
         return np.argmax(probs, axis=1)
@@ -169,14 +176,14 @@ class PC:
             variable 2, then the columns of X should contain observations of
             variables 0, 1, 3, and 4 in that order.
         """
+        eps = 1e-6
+        if classcol is None:
+            classcol = len(self.ncat)-1
         nclass = int(self.ncat[classcol])
         assert nclass > 1, "Only categorical variables can be classified."
-        eps = 1e-6
         X = X.copy()
         if X.ndim == 1:
             X = np.expand_dims(X, axis=0)
-        if classcol is None:
-            classcol = len(self.ncat)
         # If not predicting the default target class (assumed to be the last column)
         # use the other classify function.
         if classcol != len(self.ncat):
@@ -187,10 +194,18 @@ class PC:
             conditional = counts/np.sum(counts, axis=1, keepdims=True)
         else:
             # Convert from log to probability space
-            joints_minus_max = joints - np.max(joints, axis=1, keepdims=True)
+            max_values = np.max(joints, axis=1, keepdims=True)
+            max_values = np.where(np.isfinite(max_values), max_values, 0)
+            joints_minus_max = joints - max_values
             probs = np.where(np.exp(joints_minus_max) >= (np.log(eps) - np.log(nclass)), np.exp(joints_minus_max), 0)
             # Normalize to sum out X: we get P(Y|X) by dividing by P(X)
-            conditional = probs/np.sum(probs, axis=1, keepdims=True)
+            prob_sum = np.sum(probs, keepdims=True, axis=1)
+            # Treat cases where all classes have low probability.
+            unlikely_ones = np.where(prob_sum == 0)[0]
+            if len(unlikely_ones) > 0:
+                print("Low density samples found at indices ", unlikely_ones, ". Probably out-of-domain samples.")
+                prob_sum[unlikely_ones, :] += 1e-12
+            conditional = probs/prob_sum
         # Average over the trees
         agg = np.mean(conditional, axis=2)
         maxclass = np.argmax(agg, axis=1)
@@ -227,13 +242,13 @@ class PC:
             variable 2, then the columns of X should contain observations of
             variables 0, 1, 3, and 4 in that order.
         """
+        eps = 1e-6
+        if classcol is None:
+            classcol = len(self.ncat)-1
         nclass = int(self.ncat[classcol])
         assert nclass > 1, "Only categorical variables can be classified."
-        eps = 1e-6
         if X.ndim == 1:
             X = np.expand_dims(X, axis=0)
-        if classcol is None:
-            classcol = len(self.ncat)
         maxclass = np.zeros(X.shape[0])-1
         maxlogpr = np.zeros(X.shape[0])-np.Inf
         joints = np.zeros((X.shape[0], nclass))
@@ -241,9 +256,17 @@ class PC:
             iclass = np.zeros(X.shape[0]) + i
             Xi = np.insert(X, classcol, iclass, axis=1)
             joints[:, i] = np.squeeze(eval_root(self.root, Xi))
-        joints_minus_max = joints - np.max(joints, axis=1, keepdims=True)
+        max_values = np.max(joints, axis=1, keepdims=True)
+        max_values = np.where(np.isfinite(max_values), max_values, 0)
+        joints_minus_max = joints - max_values
         probs = np.where(np.exp(joints_minus_max) >= (np.log(eps) - np.log(nclass)), np.exp(joints_minus_max), 0)
-        probs = probs/probs.sum(axis=1, keepdims=True)
+        prob_sum = np.sum(probs, keepdims=True, axis=1)
+        # Treat cases where all classes have low probability.
+        unlikely_ones = np.where(prob_sum == 0)[0]
+        if len(unlikely_ones) > 0:
+            print("Low density samples found at indices ", unlikely_ones, ". Probably out-of-domain samples.")
+            prob_sum[unlikely_ones, :] += 1e-12
+        probs = probs/prob_sum
         if return_prob:
             return np.argmax(probs, axis=1), probs
         return np.argmax(probs, axis=1)
@@ -276,19 +299,27 @@ class PC:
             variable 2, then the columns of X should contain observations of
             variables 0, 1, 3, and 4 in that order.
         """
-        nclass = int(self.ncat[classcol])
-        assert nclass > 1, "Only categorical variables can be classified."
         eps = 1e-6
         if classcol is None:
-            classcol = len(self.ncat)
+            classcol = len(self.ncat)-1
+        nclass = int(self.ncat[classcol])
+        assert nclass > 1, "Only categorical variables can be classified."
         joints = np.zeros((X.shape[0], self.root.nchildren, nclass))
         for i in range(nclass):
             iclass = np.zeros(X.shape[0]) + i
             Xi = np.insert(X, classcol, iclass, axis=1)
             joints[:, :, i] = eval_root_children(self.root, Xi)
-        joints_minus_max = joints - np.max(joints, axis=2, keepdims=True)
+        max_values = np.max(joints, axis=1, keepdims=True)
+        max_values = np.where(np.isfinite(max_values), max_values, 0)
+        joints_minus_max = joints - max_values
         probs = np.where(np.exp(joints_minus_max) >= (np.log(eps) - np.log(nclass)), np.exp(joints_minus_max), 0)
-        normalized = probs/np.sum(probs, axis=2, keepdims=True)
+        prob_sum = np.sum(probs, keepdims=True, axis=2)
+        # Treat cases where all classes have low probability.
+        unlikely_ones = np.where(prob_sum == 0)[0]
+        if len(unlikely_ones) > 0:
+            print("Low density samples found at indices ", unlikely_ones, ". Probably out-of-domain samples.")
+            prob_sum[unlikely_ones, :] += 1e-12
+        normalized = probs/prob_sum
         agg = np.mean(normalized, axis=1)
         maxclass = np.argmax(agg, axis=1)
         if return_prob:

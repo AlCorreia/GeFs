@@ -113,7 +113,8 @@ def add_node(learnspn, data, scope, max_height, last_node=None):
         node = add_sumnode(learnspn, data, scope, max_height, last_node)
     if node is None:
         # If no split found, assume fully factorised model.
-        node = ProdNode(last_node, scope, data.shape[0])
+        node = ProdNode(scope, data.shape[0])
+        last_node.add_child(node)
         for var in scope:
             add_leaf(learnspn, data, [var], node)
     return node
@@ -165,13 +166,15 @@ def add_prodnode(learnspn, data, scope, max_height, last_node):
         class_in_scope = False
     class_split = (class_in_scope) and (classes_obs < 2)
     if (nclu > 1) or class_split:  # If independent clusters were found or split on class var.
-        prodnode = ProdNode(last_node, scope, m)
+        prodnode = ProdNode(scope, m)
+        last_node.add_child(prodnode)
         # If there is only one class in the data, add indicator node
         # Class-selective
         if class_split:
             # Add an indicator node for the given value of the class variable
-            leaf = Leaf(prodnode, np.array([int(learnspn.classcol)]), data.shape[0],
+            leaf = Leaf(np.array([int(learnspn.classcol)]), data.shape[0],
                         np.unique(data[:, int(learnspn.classcol)]), 1)
+            prodnode.add_child(leaf)
             # Remove class variable from scope
             scope = scope.copy()
             scope = np.array([v for v in scope if v != learnspn.classcol], dtype=np.int64)
@@ -235,7 +238,8 @@ def add_sumnode(learnspn, data, scope, max_height, last_node):
     if len(np.unique(clu_ind)) == 1:
         return None
     else:
-        sumnode = SumNode(last_node, scope, m)
+        sumnode = SumNode(scope, m)
+        last_node.add_child(sumnode)
         for i in np.unique(clu_ind):
             members = np.where(clu_ind == i)[0]
             if len(members) > 0:
@@ -276,10 +280,12 @@ def add_leaf(learnspn, data, scope, last_node):
     m = data.shape[0]
     assert len(scope) == 1, "Univariate leaf should not have more than one variable in its scope."
     if learnspn.ncat[scope[0]] > 1:  # Categorical variable
-        leaf = MultinomialLeaf(last_node, np.asarray(scope), data.shape[0])
+        leaf = MultinomialLeaf(np.asarray(scope), data.shape[0])
+        last_node.add_child(leaf)
         fit_multinomial(leaf, data, int(learnspn.ncat[scope[0]]))
         return leaf
     else:  # Continuous variable (assumed normally distributed).
-        leaf = GaussianLeaf(last_node, np.asarray(scope), m)
+        leaf = GaussianLeaf(np.asarray(scope), m)
+        last_node.add_child(leaf)
         fit_gaussian(leaf, data, np.inf, -np.inf)
         return leaf
