@@ -20,22 +20,23 @@ spec['right_child'] = optional(node_type) # last child
 spec['sibling'] = optional(node_type)  # next sibling
 spec['nchildren'] = int64
 
-spec['scope'] = int64[:]
+spec['scope'] = int64[:]  # Indices of the variables in the support of the node's pdf
 spec['type'] = types.unicode_type
-spec['n'] = float64
-spec['w'] = optional(float64[:])
-spec['logw'] = optional(float64[:])
-spec['comparison'] = int64
-spec['value'] = float64[:]
-spec['mean'] = float64
-spec['std'] = float64
-spec['a'] = float64
-spec['b'] = float64
+spec['n'] = float64  # Number of datapoints
+spec['w'] = optional(float64[:])  # Sum node weights
+spec['logw'] = optional(float64[:])  # Log of sum node weights
+spec['tempw'] = optional(float64[:])  # Temporary weitghts for conditional sampling
+spec['comparison'] = int64  # Type of comparison (relevant for leaf nodes only)
+spec['value'] = float64[:]  # Threshold for comparison (leaf nodes only)
+spec['mean'] = float64  # Relevant for gaussian nodes only
+spec['std'] = float64  # Standard deviation (relevant for gaussian nodes only)
+spec['a'] = float64  # Lower boundary of truncated gaussian (relevant for gaussian nodes only)
+spec['b'] = float64  # Upper boundary of truncated gaussian (relevant for gaussian nodes only)
 spec['logcounts'] = optional(float64[:])
-spec['p'] = optional(float64[:])
-spec['logp'] = optional(float64[:])
-spec['upper'] = float64[:]
-spec['lower'] = float64[:]
+spec['p'] = optional(float64[:])  # Parameters of multinomial distribution
+spec['logp'] = optional(float64[:])  # Log of Parameters of multinomial dist.
+spec['upper'] = float64[:]  # Same as a and b, but defined over the entire scope (relevant for all nodes)
+spec['lower'] = float64[:]  # Same as a and b, but defined over the entire scope (relevant for all nodes)
 
 
 @jitclass(spec)
@@ -53,6 +54,7 @@ class Node:
         # Sum params
         self.w = None
         self.logw = None
+        self.tempw = None
         # Leaf params
         self.value = np.zeros(1, dtype=np.float64)
         self.comparison = -1
@@ -101,6 +103,9 @@ class Node:
             self.n = n
             self.w = np.divide(children_n.ravel(), self.n)
             self.logw = np.log(self.w.ravel())
+
+    def set_tempw(self, array):
+        self.tempw = array
 
 
 node_type.define(Node.class_type.instance_type)
@@ -179,7 +184,7 @@ def fit_gaussian(node, data, upper, lower):
             node.std = np.std(data[:, node.scope])
         else:
             node.std = np.sqrt(1.)  # Probably not the best solution here
-        node.std = max(np.sqrt(1.), node.std)
+        node.std = max(1, node.std)
         # Compute the tresholds to truncate the Gaussian.
         # The Gaussian has support [a, b]
     node.a = lower
@@ -767,3 +772,94 @@ def sample_aux(node, res=None):
         res[node.scope] = categorical(node.p)[0]
         return res
     return res
+
+
+@njit
+def sample_conditional(node, evi):
+    """
+        Returns samples from the distribution defined by the PC given the
+        evidence `evi`.
+
+        Parameters
+        ----------
+        evi: numpy array (n_samples, n_variables)
+            Non-observed variables should be set to numpy.nan.
+    """
+    if evi.ndim == 1:
+        evi_local = np.expand_dims(evi, axis=0).copy()
+    else:
+        evi_local = evi.copy()
+    for i in range(evi_local.shape[0]):
+        evi_i = evi_local[i, :]
+        set_tempw(node, evi_i.reshape(1, -1))
+        sample_conditional_aux(node, evi_i)
+    return evi_local
+
+
+@njit
+def sample_conditional_aux(node, evi):
+    """
+        Returns one sample from the distribution defined by the PC rooted at
+        node, given the evidence in `evi`.
+    """
+    if node.type == 'S':
+        index = categorical(node.tempw)[0]
+        node.set_tempw(node.w)  # reset tempw
+        return sample_conditional_aux(node.children[index], evi)
+    elif node.type == 'P':
+        for child in node.children:
+            evi_i = sample_conditional_aux(child, evi)
+            evi[child.scope] = evi_i[child.scope]
+        return evi
+    elif node.type == 'G':
+        if np.isnan(evi[node.scope]):
+            evi[node.scope] = sample_trunc_phi(node.mean, node.std, node.a, node.b)
+        return evi
+    elif node.type == 'M':
+        if np.isnan(evi[node.scope]):
+            evi[node.scope] = categorical(node.p)[0]
+        return evi
+    return evi
+
+
+@njit
+def set_tempw(node, evi):
+    """
+        Evaluates the PC rooted at `node` at evidence `evi`.
+        The temporary weights `tempw` of the sum nodes are updated to reflect
+        the probability of the evidence `evi`.
+    """
+    eps = 1e-6
+    if node.type == 'L':
+        if node.comparison == 0:  # IN
+            return eval_in(node.scope, node.value.astype(np.int64), evi)
+        elif node.comparison == 1:  # EQ
+            return eval_eq(node.scope, node.value.astype(np.float64), evi)
+        elif node.comparison == 3:  # LEQ
+            return eval_leq(node.scope, node.value, evi)
+        elif node.comparison == 4:  # G
+            return eval_g(node.scope, node.value, evi)
+    elif node.type == 'M':
+        return eval_m(node, evi)
+    elif node.type == 'G':
+        return eval_gaussian(node, evi)
+    elif node.type == 'U':
+        return np.ones(evi.shape[0]) * node.value
+    elif node.type == 'P':
+        logprs = np.zeros((evi.shape[0], node.nchildren), dtype=np.float64)
+        logprs[:, 0] = evaluate(node.children[0], evi)
+        nonzero = np.where(logprs[:, 0] != -np.Inf)[0]
+        if len(nonzero) > 0:
+            for i in prange(1, node.nchildren):
+                # Only evaluate nonzero examples to save computation
+                logprs[nonzero, i] = set_tempw(node.children[i], evi[nonzero, :])
+        return np.sum(logprs, axis=1)
+    elif node.type == 'S':
+        logprs = np.zeros((evi.shape[0], node.nchildren), dtype=np.float64)
+        for i in prange(node.nchildren):
+            logprs[:, i] = set_tempw(node.children[i], evi) + node.logw[i]
+        res = logsumexp2(logprs, axis=1)
+        probs = np.exp(logprs - res)[0]
+        node.set_tempw(probs)
+        return res
+    return np.zeros(evi.shape[0])

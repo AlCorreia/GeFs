@@ -1,7 +1,8 @@
 import numpy as np
 
 from .learning import LearnSPN, fit
-from .nodes import eval_root, eval_root_children, eval_root_class, sample, delete
+from .nodes import (eval_root, eval_root_children, eval_root_class, sample,
+                    sample_conditional, delete)
 from .utils import logsumexp3
 
 
@@ -118,6 +119,10 @@ class PC:
         eps = 1e-6
         if classcol is None:
             classcol = len(self.ncat)-1
+        elif classcol != len(self.ncat)-1:
+            # If not predicting the default target class (assumed to be the
+            # last column) use the other classify function.
+            return self.classify_lspn(X, classcol, return_prob)
         nclass = int(self.ncat[classcol])
         assert nclass > 1, "Only categorical variables can be classified."
         X = X.copy()
@@ -125,8 +130,6 @@ class PC:
             X = np.expand_dims(X, axis=0)
         # If not predicting the default target class (assumed to be the last column)
         # use the other classify function.
-        if classcol != len(self.ncat):
-            return self.classify_lspn(X, classcol, return_prob)
         joints = eval_root_class(self.root, X, classcol, nclass, naive=False)
         joints = logsumexp3(joints, axis=2)
         max_values = np.max(joints, axis=1, keepdims=True)
@@ -179,15 +182,15 @@ class PC:
         eps = 1e-6
         if classcol is None:
             classcol = len(self.ncat)-1
+        elif classcol != len(self.ncat)-1:
+            # If not predicting the default target class (assumed to be the
+            # last column) use the other classify function.
+            return self.classify_avg_lspn(X, classcol, return_prob)
         nclass = int(self.ncat[classcol])
         assert nclass > 1, "Only categorical variables can be classified."
         X = X.copy()
         if X.ndim == 1:
             X = np.expand_dims(X, axis=0)
-        # If not predicting the default target class (assumed to be the last column)
-        # use the other classify function.
-        if classcol != len(self.ncat):
-            return self.classify_avg_lspn(X, classcol, return_prob)
         joints = eval_root_class(self.root, X, classcol, nclass, naive)
         if naive:
             counts = np.exp(joints).astype(int)  # int to filter out the smoothing
@@ -247,6 +250,7 @@ class PC:
             classcol = len(self.ncat)-1
         nclass = int(self.ncat[classcol])
         assert nclass > 1, "Only categorical variables can be classified."
+        X = X.copy()
         if X.ndim == 1:
             X = np.expand_dims(X, axis=0)
         maxclass = np.zeros(X.shape[0])-1
@@ -304,12 +308,15 @@ class PC:
             classcol = len(self.ncat)-1
         nclass = int(self.ncat[classcol])
         assert nclass > 1, "Only categorical variables can be classified."
+        X = X.copy()
+        if X.ndim == 1:
+            X = np.expand_dims(X, axis=0)
         joints = np.zeros((X.shape[0], self.root.nchildren, nclass))
         for i in range(nclass):
             iclass = np.zeros(X.shape[0]) + i
             Xi = np.insert(X, classcol, iclass, axis=1)
             joints[:, :, i] = eval_root_children(self.root, Xi)
-        max_values = np.max(joints, axis=1, keepdims=True)
+        max_values = np.max(joints, axis=2, keepdims=True)
         max_values = np.where(np.isfinite(max_values), max_values, 0)
         joints_minus_max = joints - max_values
         probs = np.where(np.exp(joints_minus_max) >= (np.log(eps) - np.log(nclass)), np.exp(joints_minus_max), 0)
@@ -327,8 +334,19 @@ class PC:
         return maxclass
 
     def sample(self, n_samples=1):
-        """ Returns one sample from the """
+        """ Returns samples from the distribution defined by the PC. """
         return sample(self.root, n_samples)
+
+    def sample_conditional(self, evi):
+        """ Returns samples from the distribution defined by the PC
+            given the evidence in `evi`.
+
+            Parameters
+            ----------
+            evi: numpy array (n_samples, n_variables)
+                Non-observed variables should be set to numpy.nan.
+        """
+        return sample_conditional(self.root, evi)
 
     def clear(self):
         """ Deletes the structure of the PC. """
