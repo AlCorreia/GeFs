@@ -8,5 +8,5 @@ setup(name='gefs',
       author_email='a.h.chaim.correia@tue.nl',
       license='MIT',
       packages=['gefs'],
-      install_requires=['numpy', 'numba', 'pandas', 'scipy>=1.5', 'sklearn', 'tqdm'],
+      install_requires=['numpy', 'numba>=0.49', 'pandas', 'scipy>=1.5', 'sklearn', 'tqdm'],
       zip_safe=False)
