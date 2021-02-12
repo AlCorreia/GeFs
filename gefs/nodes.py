@@ -92,9 +92,9 @@ class Node:
             # the last (now right) child will have this node as sibling
             self.right_child.add_sibling(child)
             self.right_child = child
+        self.nchildren += 1
         if self.type == 'S':
             self.reweight()
-        self.nchildren += 1
 
     def reweight(self):
         children_n = np.array([c.n for c in self.children])
@@ -102,7 +102,10 @@ class Node:
         if n > 0:
             self.n = n
             self.w = np.divide(children_n.ravel(), self.n)
-            self.logw = np.log(self.w.ravel())
+        else:
+            self.n = 0
+            self.w = np.ones(self.nchildren) * (1/self.nchildren)
+        self.logw = np.log(self.w.ravel())
 
     def set_tempw(self, array):
         self.tempw = array
@@ -175,7 +178,7 @@ def fit_gaussian(node, data, upper, lower):
     assert node.type == 'G', "Only gaussian leaves fit data."
     node.n = data.shape[0]
     m = np.nanmean(data[:, node.scope])
-    if np.isnan(m):
+    if np.isnan(m):  # No data was observed for this variable (node.scope)
         node.mean = 0.  # Assuming the data has been standardized
         node.std = np.sqrt(1.)
     else:
@@ -202,7 +205,9 @@ def fit_multinomial(node, data, k):
         node.logcounts = np.log(counts)
         node.p = counts/(d.shape[0] + k*1e-6)
     else:
-        node.p = np.ones(k) * (1/k)
+        counts = np.ones(k)
+        node.logcounts = np.log(counts)
+        node.p = counts * (1/k)
     node.logp = np.log(np.asarray(node.p))
 
 

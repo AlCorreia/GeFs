@@ -278,7 +278,6 @@ def add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr):
     upper, lower = pc_node.upper, pc_node.lower
 
     if n_points >= learnspn:
-        # The class variable is modeled independently as multinomial data
         learner = LearnSPN(ncat, thr, 2, max_height, None)
         fit(learner, data_leaf, pc_node)
     else:
