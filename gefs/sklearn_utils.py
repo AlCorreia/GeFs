@@ -81,7 +81,7 @@ def calc_outofbag(n_samples, rf):
 
 
 def tree2pc_sklearn(tree, X, y, ncat, learnspn, max_height=100000,
-                    thr=0.01, return_pc=False):
+                    thr=0.01, minstd=1, return_pc=False):
     """
         Parses a sklearn DecisionTreeClassifier to a Generative Decision Tree.
         Note that X, y do not need to match the data used to train the
@@ -107,7 +107,8 @@ def tree2pc_sklearn(tree, X, y, ncat, learnspn, max_height=100000,
             p-value threshold for independence tests in product nodes.
         return_pc: boolean
             If True returns a PC object, if False returns a Node object (root).
-
+        minstd: float
+            The minimum standard deviation of gaussian leaves.
 
     https://stackoverflow.com/questions/20224526/how-to-extract-the-decision-rules-from-scikit-learn-decision-tree
     """
@@ -164,7 +165,7 @@ def tree2pc_sklearn(tree, X, y, ncat, learnspn, max_height=100000,
                     else:  # Continuous variable
                         leaf = GaussianLeaf(scope=np.array([var]), n=data.shape[0]+lp)
                         node.add_child(leaf)
-                        fit_gaussian(leaf, data, upper[var], lower[var])
+                        fit_gaussian(leaf, data, upper[var], lower[var], minstd)
                 return None
 
     upper = ncat.copy().astype(float)
@@ -186,7 +187,8 @@ def tree2pc_sklearn(tree, X, y, ncat, learnspn, max_height=100000,
     return root
 
 
-def rf2pc(rf, X_train, y_train, ncat, learnspn=np.Inf, max_height=10000, thr=0.01):
+def rf2pc(rf, X_train, y_train, ncat, learnspn=np.Inf, max_height=10000,
+          thr=0.01, minstd=1):
     """
         Parses a sklearn RandomForestClassifier to a Generative Forest.
         Note that X, y do not need to match the data used to train the
@@ -210,6 +212,8 @@ def rf2pc(rf, X_train, y_train, ncat, learnspn=np.Inf, max_height=10000, thr=0.0
             Maximum height (depth) of the LearnSPN models at the leaves.
         thr: float
             p-value threshold for independence tests in product nodes.
+        minstd: float
+            The minimum standard deviation of gaussian leaves.
     """
     scope = np.arange(len(ncat)).astype(int)
     lp = np.sum(np.where(ncat==1, 0, ncat)) * 1e-6 # LaPlace counts
@@ -221,6 +225,6 @@ def rf2pc(rf, X_train, y_train, ncat, learnspn=np.Inf, max_height=10000, thr=0.0
     for i, tree in enumerate(rf.estimators_):
         X_tree = X_train[sample_idx[i], :]
         y_tree = y_train[sample_idx[i]]
-        si = tree2pc_sklearn(tree, X_tree, y_tree, ncat, learnspn, max_height, thr, return_pc=False)
+        si = tree2pc_sklearn(tree, X_tree, y_tree, ncat, learnspn, max_height, thr, minstd, return_pc=False)
         pc.root.add_child(si)
     return pc

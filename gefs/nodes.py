@@ -174,8 +174,9 @@ def delete(node):
 ###########################
 
 @njit
-def fit_gaussian(node, data, upper, lower):
+def fit_gaussian(node, data, upper, lower, minstd=1):
     assert node.type == 'G', "Only gaussian leaves fit data."
+    assert minstd > 0, "Minimum standard deviation should be positive."
     node.n = data.shape[0]
     m = np.nanmean(data[:, node.scope])
     if np.isnan(m):  # No data was observed for this variable (node.scope)
@@ -187,7 +188,7 @@ def fit_gaussian(node, data, upper, lower):
             node.std = np.std(data[:, node.scope])
         else:
             node.std = np.sqrt(1.)  # Probably not the best solution here
-        node.std = max(1, node.std)
+        node.std = max(minstd, node.std)
         # Compute the tresholds to truncate the Gaussian.
         # The Gaussian has support [a, b]
     node.a = lower

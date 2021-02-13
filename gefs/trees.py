@@ -247,7 +247,7 @@ def add_split(tree_node, pc_node, ncat, root=False):
 
 
 @njit
-def add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr):
+def add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr, minstd):
     """
         Fits a density estimator at a given leaf.
 
@@ -269,6 +269,8 @@ def add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr):
             The threshold (p-value) below which we reject the hypothesis of
             independence. In that case, they are considered dependent and
             assigned to the same cluster.
+        minstd: float
+            The minimum standard deviation of gaussian leaves.
     """
     counts = tree_node.counts
     n_points = len(tree_node.idx)
@@ -289,11 +291,11 @@ def add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr):
             else:
                 leaf = GaussianLeaf(np.array([var]), n_points+lp)
                 pc_node.add_child(leaf)
-                fit_gaussian(leaf, data_leaf, upper[var], lower[var])
+                fit_gaussian(leaf, data_leaf, upper[var], lower[var], minstd)
         return None
 
 
-def tree2pc(tree, learnspn=np.Inf, max_height=1000000, thr=0.01):
+def tree2pc(tree, learnspn=np.Inf, max_height=1000000, thr=0.01, minstd=1):
     """
         Converts a Decision Tree into a Probabilistic Circuit.
 
@@ -310,6 +312,8 @@ def tree2pc(tree, learnspn=np.Inf, max_height=1000000, thr=0.01):
             The threshold (p-value) below which we reject the hypothesis of
             independence. In that case, they are considered dependent and
             assigned to the same cluster.
+        minstd: float
+            The minimum standard deviation of gaussian leaves.
     """
     scope = np.array([i for i in range(tree.X.shape[1]+1)], dtype=np.int64)
     data = np.concatenate([tree.X, np.expand_dims(tree.y, axis=1)], axis=1)
@@ -334,7 +338,7 @@ def tree2pc(tree, learnspn=np.Inf, max_height=1000000, thr=0.01):
         pc_node = pc_queue.pop(0)
         # If node is leaf, fit a density estimator
         if tree_node.isleaf:
-            add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr)
+            add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr, minstd)
         # If node is a decision node, add another split in the PC.
         else:
             p_left, p_right = add_split(tree_node, pc_node, ncat, root)
@@ -513,7 +517,7 @@ class RandomForest:
                                        self.max_features, self.max_depth,
                                        self.surrogate)
 
-    def topc(self, learnspn=np.Inf, max_height=1000000, thr=0.01):
+    def topc(self, learnspn=np.Inf, max_height=1000000, thr=0.01, minstd=1):
         """
             Returns a Probabilistic Circuit matching the tree structure.
 
@@ -527,11 +531,13 @@ class RandomForest:
                 The threshold (p-value) below which we reject the hypothesis of
                 independence. In that case, they are considered dependent and
                 assigned to the same cluster.
+            minstd: float
+                The minimum standard deviation of gaussian leaves.
         """
         pc = PC()
         pc.root = SumNode(scope=self.scope, n=1)
         for estimator in tqdm(self.estimators):
-            tree_pc = tree2pc(estimator, learnspn=learnspn, max_height=max_height, thr=thr)
+            tree_pc = tree2pc(estimator, learnspn=learnspn, max_height=max_height, thr=thr, minstd=minstd)
             pc.root.add_child(tree_pc.root)
         pc.ncat = tree_pc.ncat
         return pc
