@@ -1,16 +1,27 @@
 # GeFs - Generative Forests in Python
 
-[Generative Forests](https://arxiv.org/abs/2006.14937) are a class of Probabilistic Circuits (PCs) that subsumes Random Forests. They maintain the discriminative structure learning and overall predictive performance of Random Forests, while extending them to a full generative model over the joint p(X, y). This enhances Random Forests with pricipled methods for
+[Generative Forests](https://proceedings.neurips.cc/paper/2020/hash/8396b14c5dff55d13eea57487bf8ed26-Abstract.html) are a class of Probabilistic Circuits (PCs) that subsumes Random Forests. They maintain the discriminative structure learning and overall predictive performance of Random Forests, while extending them to a full generative model over the joint p(X, y). This enhances Random Forests with pricipled methods for
 
 - Outlier detection
 - Robust classification
 - Inference with missing values
 
-This repository reproduces the experiments provided in the papers [Joints in Random Forests](https://arxiv.org/abs/2006.14937) and [Towards Robust Classification with Deep Generative Forests](https://arxiv.org/abs/2007.05721). See the `experiments` folder for the experimental set-up.
+For a in depth overview of Generative Forests (GeFs) please check our paper [Joints in Random Forests](https://proceedings.neurips.cc/paper/2020/hash/8396b14c5dff55d13eea57487bf8ed26-Abstract.html) in Neurips 2020.
+
+This repository reproduces the experiments provided in the papers [Joints in Random Forests](https://proceedings.neurips.cc/paper/2020/hash/8396b14c5dff55d13eea57487bf8ed26-Abstract.html) and [Towards Robust Classification with Deep Generative Forests](https://arxiv.org/abs/2007.05721). See the `experiments` folder for the experimental set-up.
 
 ## Installation
 
 To install GeFs it suffices to run `pip install .` at the root directory of this repository. This project was developed for Python 3 and mostly likely will not run in Python 2.
+
+### Requirements
+The required packages are installed with pip or are available in `requirements.txt` if you prefer not to install this package via pip. We list the requirements here for the sake of completion.
+- numba>=0.49
+- numpy
+- pandas
+- scipy>=1.5
+- sklearn
+- tqdm
 
 ## Usage
 
@@ -20,7 +31,7 @@ We learn the structure of a GeF as in a regular Random Forest. For ease of use, 
 from gefs import RandomForest
 from prep import get_data, train_test_split
 
-data, ncat = get_data(name)  # Preprocess the data
+data, ncat = get_data(name)  # Preprocess the data. Here `name` is a string for the dataset of choice (see the data repository).
 # ncat is the number of categories of each variable in the data
 X_train, X_test, y_train, y_test, data_train, data_test = train_test_split(data, ncat)
 rf = RandomForest(n_estimators=30, ncat=ncat)  # Train a Random Forest
@@ -33,8 +44,8 @@ Currently `topc()` fits a GeF by extending the leaves either with a fully-factor
 Classification is performed either by averaging the prediction of each tree (`classify_avg` method) or by defining a mixture over them (`classify` method). 
 
 ```
-y_pred_avg = gef.classify_avg(X_test, classcol=data.shape[1]-1)
-y_pred_mixture = gef.classify(X_test, classcol=data.shape[1]-1)
+y_pred_avg = gef.classify_avg(X_test)
+y_pred_mixture = gef.classify(X_test)
 ```
 
 Note that given GeFs are generative models, we could predict any categorical variable in the data, not just the class variable. Therefore, we need to pass the index of the variable we want to predict to the `classcol` parameter. In the datasets provided here, the class variable is always the last one, hence `data.shape[1]-1`.
