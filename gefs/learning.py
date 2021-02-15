@@ -13,6 +13,8 @@ from .utils import get_indep_clusters, isin
     ('max_height', int64),
     ('ncat', int64[:]),
     ('classcol', optional(int64)),
+    ('minstd', float64),
+    ('smoothing', float64),
 ])
 class LearnSPN:
     """
@@ -31,16 +33,22 @@ class LearnSPN:
             one-dimensional and of length equal to the number of variables.
         classcol: int
             The index of the column containing class variable.
+        minstd: float
+            The minimum standard deviation of gaussian leaves.
+        smoothing: float
+            Additive smoothing (Laplace smoothing) for categorical data.
     """
 
     def __init__(self, ncat, thr=0.001, nclusters=2, max_height=1000000,
-        classcol=None):
+        classcol=None, minstd=1., smoothing=1e-6):
         """ Set the hyperparameters of the learning algorithm. """
         self.thr = thr
         self.nclusters = nclusters
         self.max_height = max_height
-        self.ncat = ncat
+        self.ncat = np.asarray(ncat, dtype=np.int64)
         self.classcol = classcol
+        self.minstd = minstd
+        self.smoothing = smoothing
 
 
 @njit
@@ -281,8 +289,8 @@ def add_leaf(learnspn, data, scope, last_node):
     assert len(scope) == 1, "Univariate leaf should not have more than one variable in its scope."
     if learnspn.ncat[scope[0]] > 1:  # Categorical variable
         leaf = MultinomialLeaf(np.asarray(scope), data.shape[0])
-        fit_multinomial(leaf, data, int(learnspn.ncat[scope[0]]))
+        fit_multinomial(leaf, data, int(learnspn.ncat[scope[0]]), learnspn.smoothing)
     else:  # Continuous variable (assumed normally distributed).
         leaf = GaussianLeaf(np.asarray(scope), m)
-        fit_gaussian(leaf, data, np.inf, -np.inf)
+        fit_gaussian(leaf, data, np.inf, -np.inf, learnspn.minstd)
     return leaf

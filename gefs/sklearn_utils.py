@@ -80,8 +80,8 @@ def calc_outofbag(n_samples, rf):
     return sample_idx
 
 
-def tree2pc_sklearn(tree, X, y, ncat, learnspn, max_height=100000,
-                    thr=0.01, minstd=1, smoothing=1e-6, return_pc=False):
+def tree2pc(tree, X, y, ncat, learnspn=np.Inf, max_height=100000,
+            thr=0.01, minstd=1, smoothing=1e-6, return_pc=True):
     """
         Parses a sklearn DecisionTreeClassifier to a Generative Decision Tree.
         Note that X, y do not need to match the data used to train the
@@ -229,7 +229,7 @@ def rf2pc(rf, X_train, y_train, ncat, learnspn=np.Inf, max_height=10000,
     for i, tree in enumerate(rf.estimators_):
         X_tree = X_train[sample_idx[i], :]
         y_tree = y_train[sample_idx[i]]
-        si = tree2pc_sklearn(tree, X_tree, y_tree, ncat, learnspn, max_height,
-                             thr, minstd, smoothing, return_pc=False)
+        si = tree2pc(tree, X_tree, y_tree, ncat, learnspn, max_height,
+                     thr, minstd, smoothing, return_pc=False)
         pc.root.add_child(si)
     return pc

@@ -283,7 +283,7 @@ def add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr,
     upper, lower = pc_node.upper, pc_node.lower
 
     if n_points >= learnspn:
-        learner = LearnSPN(ncat, thr, 2, max_height, None)
+        learner = LearnSPN(ncat, thr, 2, max_height, None, minstd, smoothing)
         fit(learner, data_leaf, pc_node)
     else:
         for var in scope:
