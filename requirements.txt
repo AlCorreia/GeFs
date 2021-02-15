@@ -1,0 +1,6 @@
+numba>=0.49
+numpy
+pandas
+scipy>=1.5
+sklearn
+tqdm
