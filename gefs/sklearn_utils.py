@@ -81,7 +81,7 @@ def calc_outofbag(n_samples, rf):
 
 
 def tree2pc_sklearn(tree, X, y, ncat, learnspn, max_height=100000,
-                    thr=0.01, minstd=1, return_pc=False):
+                    thr=0.01, minstd=1, smoothing=1e-6, return_pc=False):
     """
         Parses a sklearn DecisionTreeClassifier to a Generative Decision Tree.
         Note that X, y do not need to match the data used to train the
@@ -109,13 +109,15 @@ def tree2pc_sklearn(tree, X, y, ncat, learnspn, max_height=100000,
             If True returns a PC object, if False returns a Node object (root).
         minstd: float
             The minimum standard deviation of gaussian leaves.
+        smoothing: float
+            Additive smoothing (Laplace smoothing) for categorical data.
 
     https://stackoverflow.com/questions/20224526/how-to-extract-the-decision-rules-from-scikit-learn-decision-tree
     """
 
     scope = np.array([i for i in range(X.shape[1]+1)]).astype(int)
     data = np.concatenate([X, np.expand_dims(y, axis=1)], axis=1)
-    lp = np.sum(np.where(ncat==1, 0, ncat)) * 1e-6 # LaPlace counts
+    lp = np.sum(np.where(ncat==1, 0, ncat)) * smoothing # LaPlace counts
     classcol = len(ncat)-1
 
     # Recursively parse decision tree nodes to PC nodes.
@@ -161,7 +163,7 @@ def tree2pc_sklearn(tree, X, y, ncat, learnspn, max_height=100000,
                     if ncat[var] > 1:  # Categorical variable
                         leaf = MultinomialLeaf(scope=np.array([var]), n=data.shape[0]+lp)
                         node.add_child(leaf)
-                        fit_multinomial(leaf, data, int(ncat[var]))
+                        fit_multinomial(leaf, data, int(ncat[var]), smoothing)
                     else:  # Continuous variable
                         leaf = GaussianLeaf(scope=np.array([var]), n=data.shape[0]+lp)
                         node.add_child(leaf)
@@ -188,7 +190,7 @@ def tree2pc_sklearn(tree, X, y, ncat, learnspn, max_height=100000,
 
 
 def rf2pc(rf, X_train, y_train, ncat, learnspn=np.Inf, max_height=10000,
-          thr=0.01, minstd=1):
+          thr=0.01, minstd=1, smoothing=1e-6):
     """
         Parses a sklearn RandomForestClassifier to a Generative Forest.
         Note that X, y do not need to match the data used to train the
@@ -214,9 +216,11 @@ def rf2pc(rf, X_train, y_train, ncat, learnspn=np.Inf, max_height=10000,
             p-value threshold for independence tests in product nodes.
         minstd: float
             The minimum standard deviation of gaussian leaves.
+        smoothing: float
+            Additive smoothing (Laplace smoothing) for categorical data.
     """
     scope = np.arange(len(ncat)).astype(int)
-    lp = np.sum(np.where(ncat==1, 0, ncat)) * 1e-6 # LaPlace counts
+    lp = np.sum(np.where(ncat==1, 0, ncat)) * smoothing # LaPlace counts
     classcol = len(ncat)-1
     data = np.concatenate([X_train, np.expand_dims(y_train, axis=1)], axis=1)
     sample_idx = calc_inbag(X_train.shape[0], rf)
@@ -225,6 +229,7 @@ def rf2pc(rf, X_train, y_train, ncat, learnspn=np.Inf, max_height=10000,
     for i, tree in enumerate(rf.estimators_):
         X_tree = X_train[sample_idx[i], :]
         y_tree = y_train[sample_idx[i]]
-        si = tree2pc_sklearn(tree, X_tree, y_tree, ncat, learnspn, max_height, thr, minstd, return_pc=False)
+        si = tree2pc_sklearn(tree, X_tree, y_tree, ncat, learnspn, max_height,
+                             thr, minstd, smoothing, return_pc=False)
         pc.root.add_child(si)
     return pc

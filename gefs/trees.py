@@ -177,7 +177,7 @@ def build_forest(X, y, n_estimators, bootstrap, ncat, imp_measure,
 
 
 @njit
-def add_split(tree_node, pc_node, ncat, root=False):
+def add_split(tree_node, pc_node, ncat, smoothing, root=False):
     """
         Creates a new split in the PC. Each split consists of a Sum node with
         two Product nodes as children. Each Product node has an indicator
@@ -193,7 +193,7 @@ def add_split(tree_node, pc_node, ncat, root=False):
     split_value = tree_node.split.threshold
     n_points_left = len(tree_node.split.left_ids)
     n_points_right = len(tree_node.split.right_ids)
-    lp = np.sum(np.where(ncat==1, 0, ncat)) * 1e-6 # LaPlace counts
+    lp = np.sum(np.where(ncat==1, 0, ncat)) * smoothing # LaPlace counts
     scope = np.arange(len(ncat), dtype=np.int64)
     if root:
         sumnode = pc_node
@@ -247,7 +247,8 @@ def add_split(tree_node, pc_node, ncat, root=False):
 
 
 @njit
-def add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr, minstd):
+def add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr,
+             minstd, smoothing):
     """
         Fits a density estimator at a given leaf.
 
@@ -271,12 +272,14 @@ def add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr, minstd):
             assigned to the same cluster.
         minstd: float
             The minimum standard deviation of gaussian leaves.
+        smoothing: float
+            Additive smoothing (Laplace smoothing) for categorical data.
     """
     counts = tree_node.counts
     n_points = len(tree_node.idx)
     data_leaf = data[tree_node.idx, :]
     scope = np.arange(data.shape[1], dtype=np.int64)
-    lp = np.sum(np.where(ncat==1, 0, ncat)) * 1e-6 # LaPlace counts
+    lp = np.sum(np.where(ncat==1, 0, ncat)) * smoothing # LaPlace counts
     upper, lower = pc_node.upper, pc_node.lower
 
     if n_points >= learnspn:
@@ -287,7 +290,7 @@ def add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr, minstd):
             if ncat[var] > 1:
                 leaf = MultinomialLeaf(np.array([var]), n_points+lp)
                 pc_node.add_child(leaf)
-                fit_multinomial(leaf, data_leaf, int(ncat[var]))
+                fit_multinomial(leaf, data_leaf, int(ncat[var]), smoothing)
             else:
                 leaf = GaussianLeaf(np.array([var]), n_points+lp)
                 pc_node.add_child(leaf)
@@ -295,7 +298,8 @@ def add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr, minstd):
         return None
 
 
-def tree2pc(tree, learnspn=np.Inf, max_height=1000000, thr=0.01, minstd=1):
+def tree2pc(tree, learnspn=np.Inf, max_height=1000000, thr=0.01,
+            minstd=1, smoothing=1e-6):
     """
         Converts a Decision Tree into a Probabilistic Circuit.
 
@@ -314,11 +318,13 @@ def tree2pc(tree, learnspn=np.Inf, max_height=1000000, thr=0.01, minstd=1):
             assigned to the same cluster.
         minstd: float
             The minimum standard deviation of gaussian leaves.
+        smoothing: float
+            Additive smoothing (Laplace smoothing) for categorical data.
     """
     scope = np.array([i for i in range(tree.X.shape[1]+1)], dtype=np.int64)
     data = np.concatenate([tree.X, np.expand_dims(tree.y, axis=1)], axis=1)
     ncat = np.array(tree.ncat)
-    lp = np.sum(np.where(ncat==1, 0, ncat)) * 1e-6 # LaPlace counts
+    lp = np.sum(np.where(ncat==1, 0, ncat)) * smoothing # LaPlace counts
     upper = ncat.copy().astype(np.float64)
     upper[upper == 1] = np.Inf
     lower = ncat.copy().astype(np.float64)
@@ -338,10 +344,11 @@ def tree2pc(tree, learnspn=np.Inf, max_height=1000000, thr=0.01, minstd=1):
         pc_node = pc_queue.pop(0)
         # If node is leaf, fit a density estimator
         if tree_node.isleaf:
-            add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr, minstd)
+            add_dist(tree_node, pc_node, data, ncat, learnspn, max_height, thr,
+                     minstd, smoothing)
         # If node is a decision node, add another split in the PC.
         else:
-            p_left, p_right = add_split(tree_node, pc_node, ncat, root)
+            p_left, p_right = add_split(tree_node, pc_node, ncat, smoothing, root)
             tree_queue.extend([tree_node.left_child, tree_node.right_child])
             pc_queue.extend([p_left, p_right])
         root = False
@@ -517,7 +524,8 @@ class RandomForest:
                                        self.max_features, self.max_depth,
                                        self.surrogate)
 
-    def topc(self, learnspn=np.Inf, max_height=1000000, thr=0.01, minstd=1):
+    def topc(self, learnspn=np.Inf, max_height=1000000, thr=0.01, minstd=1,
+             smoothing=1e-6):
         """
             Returns a Probabilistic Circuit matching the tree structure.
 
@@ -533,11 +541,14 @@ class RandomForest:
                 assigned to the same cluster.
             minstd: float
                 The minimum standard deviation of gaussian leaves.
+            smoothing: float
+                Additive smoothing (Laplace smoothing) for categorical data.
         """
         pc = PC()
         pc.root = SumNode(scope=self.scope, n=1)
         for estimator in tqdm(self.estimators):
-            tree_pc = tree2pc(estimator, learnspn=learnspn, max_height=max_height, thr=thr, minstd=minstd)
+            tree_pc = tree2pc(estimator, learnspn=learnspn, max_height=max_height,
+                              thr=thr, minstd=minstd, smoothing=smoothing)
             pc.root.add_child(tree_pc.root)
         pc.ncat = tree_pc.ncat
         return pc

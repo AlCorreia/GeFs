@@ -196,15 +196,15 @@ def fit_gaussian(node, data, upper, lower, minstd=1):
 
 
 @njit
-def fit_multinomial(node, data, k):
+def fit_multinomial(node, data, k, smoothing=1e-6):
     assert node.type == 'M', "Node is not a multinomial leaf."
     d = data[~np.isnan(data[:, node.scope].ravel()), :]  # Filter missing
     d = data[:, node.scope].ravel()  # Project to scope
     d = np.asarray(d, np.int64)
     if d.shape[0] > 0:
-        counts = bincount(d, k) + 1e-6
+        counts = bincount(d, k) + smoothing
         node.logcounts = np.log(counts)
-        node.p = counts/(d.shape[0] + k*1e-6)
+        node.p = counts/(d.shape[0] + k*smoothing)
     else:
         counts = np.ones(k)
         node.logcounts = np.log(counts)
