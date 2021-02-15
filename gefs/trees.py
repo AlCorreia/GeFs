@@ -496,9 +496,9 @@ class RandomForest:
         For the most part, the class attributes match those of the Random Forest
         implementation in scikit-learn.
     """
-    def __init__(self, n_estimators=100, imp_measure='gini', min_samples_split=2,
-                 min_samples_leaf=1, max_features=None, bootstrap=True,
-                 ncat=None, max_depth=1e6, surrogate=False):
+    def __init__(self, ncat, n_estimators=100, imp_measure='gini',
+                 min_samples_split=2, min_samples_leaf=1, max_features=None,
+                 bootstrap=True, max_depth=1e6, surrogate=False):
 
         self.n_estimators = n_estimators
         self.imp_measure = imp_measure
@@ -544,13 +544,13 @@ class RandomForest:
             smoothing: float
                 Additive smoothing (Laplace smoothing) for categorical data.
         """
-        pc = PC()
+        pc = PC(self.ncat)
         pc.root = SumNode(scope=self.scope, n=1)
         for estimator in tqdm(self.estimators):
             tree_pc = tree2pc(estimator, learnspn=learnspn, max_height=max_height,
                               thr=thr, minstd=minstd, smoothing=smoothing)
             pc.root.add_child(tree_pc.root)
-        pc.ncat = tree_pc.ncat
+        pc.is_ensemble = True
         return pc
 
     def predict(self, X, vote=True):

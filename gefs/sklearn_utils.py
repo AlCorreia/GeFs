@@ -232,4 +232,5 @@ def rf2pc(rf, X_train, y_train, ncat, learnspn=np.Inf, max_height=10000,
         si = tree2pc(tree, X_tree, y_tree, ncat, learnspn, max_height,
                      thr, minstd, smoothing, return_pc=False)
         pc.root.add_child(si)
+    pc.is_ensemble = True
     return pc

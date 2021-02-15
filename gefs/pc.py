@@ -25,10 +25,8 @@ class PC:
     def __init__(self, ncat=None):
         self.ncat = ncat
         self.root = None
-        self.maxv = None
-        self.minv = None
         self.n_nodes = 0
-
+        self.is_ensemble = False  # Whether the PC was learned as an ensemble
 
     def learnspn(self, data, ncat=None, thr=0.001, nclusters=2, max_height=1000000, classcol=None):
         if ncat is not None:
@@ -36,7 +34,6 @@ class PC:
         assert self.ncat is not None, "You must provide `ncat`, the number of categories of each class."
         learner = LearnSPN(self.ncat, thr, nclusters, max_height, classcol)
         self.root = fit(learner, data)
-
 
     def set_topological_order(self):
         """
@@ -121,7 +118,7 @@ class PC:
             classcol = len(self.ncat)-1
         elif classcol != len(self.ncat)-1:
             # If not predicting the default target class (assumed to be the
-            # last column) use the other classify function.
+            # last column), use the other classify function.
             return self.classify_lspn(X, classcol, return_prob)
         nclass = int(self.ncat[classcol])
         assert nclass > 1, "Only categorical variables can be classified."
@@ -184,8 +181,10 @@ class PC:
             classcol = len(self.ncat)-1
         elif classcol != len(self.ncat)-1:
             # If not predicting the default target class (assumed to be the
-            # last column) use the other classify function.
+            # last column), use the other classify function.
             return self.classify_avg_lspn(X, classcol, return_prob)
+        if not self.is_ensemble:
+            return self.classify(X, classcol, return_prob)
         nclass = int(self.ncat[classcol])
         assert nclass > 1, "Only categorical variables can be classified."
         X = X.copy()
@@ -308,6 +307,8 @@ class PC:
             classcol = len(self.ncat)-1
         nclass = int(self.ncat[classcol])
         assert nclass > 1, "Only categorical variables can be classified."
+        if not self.is_ensemble:
+            return self.classify_lspn(X, classcol, return_prob)
         X = X.copy()
         if X.ndim == 1:
             X = np.expand_dims(X, axis=0)
