@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from math import erf, floor
+from math import erf, floor, log
 from numba import njit, int64, float64, optional, prange, deferred_type, types, boolean
 from numba.experimental import jitclass
 import numpy as np
@@ -28,63 +28,8 @@ def bincount(data, n):
 ##### IMPURITY MEASURES #####
 #############################
 
-@njit
-def gini(counts):
-    """
-        Computes the gini score in the distribution of classes.
-        The higher the gini score, the 'purer' the distribution.
-    """
-    p = counts/np.sum(counts)
-    return np.sum(p*(p-1))
-
-
-@njit
-def entropy(counts):
-    """
-        Computes the entropy in the distribution of classes.
-        Returns -1*entropy as we want to maximize instead of minimize the score.
-    """
-    p = counts/np.sum(counts) + 1e-12
-    return np.sum(p*np.log2(p))
-
-
-@njit
-def purity(counts):
-    """
-        Purity is a measure defined by the ratio between the number of counts
-        of the majority class over the total number of instances.
-        The larger the purity, the better the cluster.
-    """
-    if counts.sum() == 0:
-        return 1
-    return np.max(counts)/np.sum(counts)
-
-
-@njit(fastmath=True)
-def gain(left_counts, right_counts, imp_measure):
-    """
-        Computes the gain of a split.
-
-        Parameters
-        ----------
-        left_counts, right_counts: numpy
-            The counts in each side of the split.
-        imp_measure: string
-            The type of impurity of measure to use.
-    """
-    ratio = np.sum(left_counts)/np.sum(left_counts + right_counts)
-    if imp_measure == 'gini':
-        return ratio*gini(left_counts) + (1-ratio)*gini(right_counts)
-    elif imp_measure == 'purity':
-        return ratio*purity(left_counts) + (1-ratio)*purity(right_counts)
-    elif imp_measure == 'entropy':
-        return ratio*entropy(left_counts) + (1-ratio)*entropy(right_counts)
-    else:
-        return -np.Inf
-
-
 @njit(fastmath=True, inline='always')
-def gini_gain(left_counts, right_counts, n):
+def gini(left_counts, right_counts, n):
     total_left = 0
     total_right = 0
     gini_left = 0
@@ -97,8 +42,52 @@ def gini_gain(left_counts, right_counts, n):
 
     gini_left = total_left - gini_left/total_left
     gini_right = total_right - gini_right/total_right
-
     return gini_left + gini_right
+
+
+@njit(inline='always')
+def entropy(counts):
+    """
+        Computes the entropy in the distribution of classes.
+        Returns -1*entropy as we want to maximize instead of minimize the score.
+    """
+    p = counts/np.sum(counts) + 1e-12
+    return np.sum(p*np.log2(p))
+
+
+@njit(inline='always')
+def purity(counts):
+    """
+        Purity is a measure defined by the ratio between the number of counts
+        of the majority class over the total number of instances.
+        The larger the purity, the better the cluster.
+    """
+    if counts.sum() == 0:
+        return 1
+    return np.max(counts)/np.sum(counts)
+
+
+@njit(fastmath=True)
+def gain(left_counts, right_counts, n, imp_measure):
+    """
+        Computes the gain of a split.
+
+        Parameters
+        ----------
+        left_counts, right_counts: numpy
+            The counts in each side of the split.
+        imp_measure: string
+            The type of impurity of measure to use.
+    """
+    if imp_measure == 'gini':
+        return gini(left_counts, right_counts, n)
+    ratio = np.sum(left_counts)/np.sum(left_counts + right_counts)
+    if imp_measure == 'purity':
+        return ratio*purity(left_counts) + (1-ratio)*purity(right_counts)
+    elif imp_measure == 'entropy':
+        return ratio*entropy(left_counts) + (1-ratio)*entropy(right_counts)
+    else:
+        return -np.Inf
 
 
 @jitclass([
@@ -238,7 +227,7 @@ def numerical_split(x, y, idx, total_counts, tree):
         if (x_ord[i+1] <= x_ord[i] + FEATURE_THRESHOLD):
             continue
         right_counts = total_counts - left_counts
-        score = gini_gain(left_counts, right_counts, tree.n_classes)
+        score = gain(left_counts, right_counts, tree.n_classes, tree.imp_measure)
         if score > best_split.score:
             best_split.score = score
             best_split.threshold[0] = x_ord[i]
@@ -395,7 +384,7 @@ def categorical_split(x, y, idx, var, total_counts, tree):
         else:
             left_counts = counts[split].sum(axis=0)
             right_counts = total_counts - left_counts
-            score = gini_gain(left_counts, right_counts, tree.n_classes)
+            score = gain(left_counts, right_counts, tree.n_classes, tree.imp_measure)
         if score > best_split.score:
             left_mask = isin_nb(x, split)
             best_split.score = score
