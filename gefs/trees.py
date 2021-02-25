@@ -515,7 +515,7 @@ class RandomForest:
         y = y.astype(np.int64)
         n = X.shape[0]
         if self.max_features is None:
-            self.max_features = min(floor(X.shape[1]/3), X.shape[1])
+            self.max_features = max(floor(X.shape[1]/3), 1)
         self.scope = np.array([i for i in range(X.shape[1]+1)], np.int64)
         self.estimators = build_forest(X, y, self.n_estimators, self.bootstrap,
                                        self.ncat, self.imp_measure,
