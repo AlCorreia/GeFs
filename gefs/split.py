@@ -92,18 +92,17 @@ def gain(left_counts, right_counts, n, imp_measure):
 
 @jitclass([
     ('score', float64),
-    ('var', int64),
-    ('threshold', float64[:]),
-    ('surr_var', int64[:]),
-    ('surr_thr', float64[:]),
-    ('surr_go_left', boolean[:]),
-    ('surr_blind', boolean),
-    ('pos', int64),
-    ('left_ids', int64[:]),
-    ('right_ids', int64[:]),
-    ('left_counts', int64[:]),
-    ('right_counts', int64[:]),
-    ('type', types.string)
+    ('var', int64),  # Variable to split on
+    ('threshold', float64[:]),  # Threshold of the split
+    ('surr_var', int64[:]),  # Variable of surrogate split
+    ('surr_thr', float64[:]),  # Threshold of surrogate split
+    ('surr_go_left', boolean[:]),  # Direction of surrogate split (see surrogate_split below)
+    ('surr_blind', boolean),  # Direction to go if all variables are missing
+    ('left_ids', int64[:]),  # IDs of the datapoints sent left
+    ('right_ids', int64[:]),  # IDs of the datapoints sent right
+    ('left_counts', int64[:]),  # Counts of datapoints sent left
+    ('right_counts', int64[:]),  # Counts of datapoints sent right
+    ('type', types.string)  # Numerical ('num') or Categorical ('cat') split
 ])
 class Split:
     def __init__(self):
@@ -121,14 +120,13 @@ class Split:
         self.right_ids = np.empty(0, dtype=np.int64)
         self.left_counts = np.empty(0, dtype=np.int64)
         self.right_counts = np.empty(0, dtype=np.int64)
-        self.pos = -1
         self.type = 'num'
 
 
 @njit(parallel=False)
 def find_best_split(node, tree):
     """
-        Looks for the best split among for the data reaching node.
+        Looks for the best split using the data reaching node.
 
         Parameters
         ----------
