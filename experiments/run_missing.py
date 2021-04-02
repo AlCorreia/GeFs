@@ -17,6 +17,7 @@ from gefs.trees import Tree, RandomForest
 from prep import get_data, learncats, get_stats, normalize_data, standardize_data
 from knn_imputer import KNNImputer
 from simple_imputer import SimpleImputer
+from miss_forest import MissForest
 
 
 # Auxiliary functions
@@ -69,7 +70,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--lspn', '-l',
         type=str2bool,
-        default='true',
+        default='false',
     )
 
     FLAGS, unparsed = parser.parse_known_args()
@@ -81,15 +82,19 @@ if __name__ == '__main__':
     min_sample_leaves = FLAGS.msl
     min_sample_leaves = [msl for msl in min_sample_leaves if msl < data.shape[0]/10]
 
-    # filepath = os.path.join('missing', FLAGS.dataset + '_test.csv')
-    meanspath = os.path.join('missing', FLAGS.dataset + '_means.csv')
-    cispath = os.path.join('missing', FLAGS.dataset + '_cis.csv')
+    meanspath = os.path.join('missing', FLAGS.dataset + '_mf_means.csv')
+    cispath = os.path.join('missing', FLAGS.dataset + '_mf_cis.csv')
     Path('missing').mkdir(parents=True, exist_ok=True)
+
+    if FLAGS.lspn:
+        methods = ['Friedman', 'Mean', 'Surr', 'KNN', 'MissForest', 'GeFp', 'GeF', 'GeFp(LSPN)', 'GeF(LSPN)']
+    else:
+        methods = ['Friedman', 'Mean', 'Surr', 'KNN', 'MissForest', 'GeFp', 'GeF']
 
     df_all = pd.DataFrame()
 
     np.seterr(invalid='raise')
-
+    completed_runs = 0
     for run in FLAGS.runs:
         print('####### DATASET: ', FLAGS.dataset, " with shape ", data.shape)
         print('####### RUN: ', run)
@@ -121,8 +126,14 @@ if __name__ == '__main__':
 
                 knn_imputer = KNNImputer(ncat=ncat[:-1], n_neighbors=7).fit(X_train)
 
+                cat_vars = np.where(ncat[:-1]>1)[0]
+                if len(cat_vars) == 0:
+                    cat_vars = None
+                forest_imputer = MissForest(random_state=run).fit(X_train, cat_vars=cat_vars)
+
+                np.random.seed(run)
                 print('            Training')
-                rf = RandomForest(n_estimators=FLAGS.n_estimators, ncat=ncat, min_samples_leaf=min_samples_leaf, surrogate=True)
+                rf = RandomForest(n_estimators=FLAGS.n_estimators, ncat=ncat, min_samples_leaf=min_samples_leaf, surrogate=True, random_state=run)
                 rf.fit(X_train, y_train)
 
                 print('            Converting to GeF')
@@ -138,21 +149,24 @@ if __name__ == '__main__':
                 for i in tqdm(np.arange(0, 1., 0.1)):
                     df = pd.DataFrame()
                     if i == 0.:
-                        nomiss = gef.classify_avg(X_test, classcol=data.shape[1]-1, return_prob=False)
+                        gefe = gef.classify_avg(X_test, classcol=data.shape[1]-1, return_prob=False)
+                        nomiss = rf.predict(X_test, vote=False)
                         gefp = gef.classify(X_test, classcol=data.shape[1]-1, return_prob=False)
                         # All other methods are the same for complete data
                         fried = nomiss
                         imp_mean = nomiss
                         imp_knn = nomiss
+                        imp_mf = nomiss
                         surr = nomiss
-                        gefe = nomiss
                         if FLAGS.lspn:
                             l_nomiss = gef_lspn.classify_avg_lspn(X_test, classcol=data.shape[1]-1, return_prob=False)
                             gefp_lspn = gef_lspn.classify_lspn(X_test, classcol=data.shape[1]-1, return_prob=False)
                             gefe_lspn = l_nomiss
+                        print("Base Accuracy: ", accuracy_score(y_test, nomiss))
 
                     else:
                         # Sets random values to NaN
+                        np.random.seed(run)
                         missing_mask = np.full(X_test.size, False)
                         missing_mask[:int(i * X_test.size)] = True
                         np.random.shuffle(missing_mask)
@@ -163,16 +177,22 @@ if __name__ == '__main__':
 
                         fried = gef.classify_avg(X_test_miss, classcol=data.shape[1]-1, naive=True, return_prob=False)
 
-                        surr_p = rf.predict(X_test_miss, vote=False)
-                        surr = np.argmax(surr_p, axis=1)
+                        surr = rf.predict(X_test_miss, vote=False)
 
                         X_test_miss_1 = imputer.transform(X_test_miss)
                         assert np.sum(np.isnan(X_test_miss_1)) == 0, "Bug in the simple imputation method."
-                        imp_mean = gef.classify_avg(X_test_miss_1, classcol=data.shape[1]-1, return_prob=False)
+                        # imp_mean = gef.classify_avg(X_test_miss_1, classcol=data.shape[1]-1, return_prob=False)
+                        imp_mean = rf.predict(X_test_miss_1, vote=False)
 
                         X_test_miss_2 = knn_imputer.transform(X_test_miss)
                         assert np.sum(np.isnan(X_test_miss_2)) == 0, "Bug in the KNN imputation method."
-                        imp_knn = gef.classify_avg(X_test_miss_2, classcol=data.shape[1]-1, return_prob=False)
+                        # imp_knn = gef.classify_avg(X_test_miss_2, classcol=data.shape[1]-1, return_prob=False)
+                        imp_knn = rf.predict(X_test_miss_2, vote=False)
+
+                        X_test_miss_3 = forest_imputer.transform(X_test_miss)
+                        assert np.sum(np.isnan(X_test_miss_3)) == 0, "Bug in the MissForest imputation method."
+                        # imp_mf = gef.classify_avg(X_test_miss_3, classcol=data.shape[1]-1, return_prob=False)
+                        imp_mf = rf.predict(X_test_miss_3, vote=False)
 
                         gefp = gef.classify(X_test_miss, classcol=data.shape[1]-1, return_prob=False)
                         gefe = gef.classify_avg(X_test_miss, classcol=data.shape[1]-1, return_prob=False)
@@ -185,6 +205,7 @@ if __name__ == '__main__':
                     df['Mean'] = [accuracy_score(y_test, imp_mean)]
                     df['Surr'] = [accuracy_score(y_test, surr)]
                     df['KNN'] = [accuracy_score(y_test, imp_knn)]
+                    df['MissForest'] = [accuracy_score(y_test, imp_mf)]
                     df['GeFp'] = [accuracy_score(y_test, gefp)]
                     df['GeF'] = [accuracy_score(y_test, gefe)]
                     if FLAGS.lspn:
@@ -207,25 +228,22 @@ if __name__ == '__main__':
                 if FLAGS.lspn:
                     gef_lspn.delete()
                     del gef_lspn
-                    gc.collect()
+                gc.collect()
 
-    if FLAGS.lspn:
-        methods = ['Friedman', 'Mean', 'Surr', 'KNN', 'GeFp', 'GeF', 'GeFp(LSPN)', 'GeF(LSPN)']
-    else:
-        methods = ['Friedman', 'Mean', 'Surr', 'KNN', 'GeFp', 'GeF']
+        completed_runs += 1
 
-    conf = 0.95
-    if len(FLAGS.runs) == 1:
-        n_tests = FLAGS.n_folds
-        means = df_all.groupby('Missing Test').mean().reset_index()[['Missing Test'] + methods]
-        cis = df_all.groupby('Missing Test').std().reset_index()[['Missing Test'] + methods]
-        cis[methods] = cis[methods]/np.sqrt(n_tests) * stats.t.ppf((1 + conf) / 2, n_tests - 1)
-    else:
-        n_tests = len(FLAGS.runs)
-        df_all = df_all.groupby(['Run', 'Missing Test']).mean().reset_index()
-        means = df_all.groupby('Missing Test').mean().reset_index()[['Missing Test'] + methods]
-        cis = df_all.groupby('Missing Test').std().reset_index()[['Missing Test'] + methods]
-        cis[methods] = cis[methods]/np.sqrt(n_tests) * stats.t.ppf((1 + conf) / 2, n_tests - 1)
+        conf = 0.95
+        if len(FLAGS.runs) == 1:
+            n_tests = FLAGS.n_folds
+            means = df_all.groupby('Missing Test').mean().reset_index()[['Missing Test'] + methods]
+            cis = df_all.groupby('Missing Test').std().reset_index()[['Missing Test'] + methods]
+            cis[methods] = cis[methods]/np.sqrt(n_tests) * stats.t.ppf((1 + conf) / 2, n_tests - 1)
+        else:
+            n_tests = completed_runs # len(FLAGS.runs)
+            df_all = df_all.groupby(['Run', 'Missing Test']).mean().reset_index()
+            means = df_all.groupby('Missing Test').mean().reset_index()[['Missing Test'] + methods]
+            cis = df_all.groupby('Missing Test').std().reset_index()[['Missing Test'] + methods]
+            cis[methods] = cis[methods]/np.sqrt(n_tests) * stats.t.ppf((1 + conf) / 2, n_tests - 1)
 
-    means.to_csv(meanspath, index=False)
-    cis.to_csv(cispath, index=False)
+        means.to_csv(meanspath, index=False)
+        cis.to_csv(cispath, index=False)
