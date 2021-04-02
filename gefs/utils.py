@@ -14,7 +14,7 @@ erfinv_fn = functype(addr)
 
 
 @njit
-def resample_strat(x, y, n_classes):
+def resample_strat(x, y, n_classes, random_state=None):
     """
     Resampling (bootstrapping) of x stratified according to y.
 
@@ -32,6 +32,8 @@ def resample_strat(x, y, n_classes):
     x, y: numpy arrays
         In-bag samples.
     """
+    if random_state is not None:
+        np.random.seed(random_state)
     idx = np.arange(x.shape[0], dtype=np.int64)
     counts = bincount(y, n_classes)
     selected_idx = np.empty(0, dtype=np.int64)

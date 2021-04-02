@@ -124,7 +124,7 @@ class Split:
 
 
 @njit(parallel=False)
-def find_best_split(node, tree):
+def find_best_split(node, tree, random_state):
     """
         Looks for the best split using the data reaching node.
 
@@ -141,6 +141,7 @@ def find_best_split(node, tree):
         return None
     best_score = -1e6
     best_split = None
+    np.random.seed(random_state)
     vars = np.random.choice(np.arange(tree.X.shape[1]), tree.max_features, replace=False)
     X = tree.X[node.idx, :]
     y = tree.y[node.idx]

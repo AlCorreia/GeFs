@@ -125,9 +125,10 @@ def build_tree(tree, parent, counts, ordered_ids):
     queue = List()
     queue.append(root)
     n_nodes = 1
+    np.random.seed(tree.random_state)
     while len(queue) > 0:
         node = queue.pop(0)
-        split = find_best_split(node, tree)
+        split = find_best_split(node, tree, np.random.randint(1e6))
         if split is not None:
             node.split = split
             left_child = TreeNode(n_nodes, split.left_counts, node,
@@ -149,7 +150,7 @@ def build_tree(tree, parent, counts, ordered_ids):
 @njit(parallel=True)
 def build_forest(X, y, n_estimators, bootstrap, ncat, imp_measure,
                  min_samples_split, min_samples_leaf, max_features, max_depth,
-                 surrogate):
+                 surrogate, random_state):
     """
         Fits a Random Forest to (X, y).
         For the most part, the parameters match those of the Random Forest
@@ -158,8 +159,9 @@ def build_forest(X, y, n_estimators, bootstrap, ncat, imp_measure,
     n_samples = X.shape[0]
     n_classes = np.max(y)+1  # We assume ordinals from 0, 1, 2, ..., max(y)
     n_threads = nb.config.NUMBA_DEFAULT_NUM_THREADS
+    np.random.seed(random_state)
     estimators = [Tree(ncat, imp_measure, min_samples_split, min_samples_leaf,
-                       max_features, max_depth, surrogate)
+                       max_features, max_depth, surrogate, np.random.randint(1e6))
                   for i in range(n_estimators)]
 
     sizes = np.full(n_threads, n_estimators // n_threads, dtype=np.int64)
@@ -171,7 +173,8 @@ def build_forest(X, y, n_estimators, bootstrap, ncat, imp_measure,
         start = offset_in_buffers[thread_idx]
         stop = start + sizes[thread_idx]
         for i in range(start, stop):
-            Xtree_, ytree_, _ = resample_strat(X, y, n_classes)
+            Xtree_, ytree_, _ = resample_strat(X, y, n_classes,
+                                               estimators[i].random_state)
             estimators[i].fit(Xtree_, ytree_)
     return estimators
 
@@ -419,13 +422,16 @@ node_type.define(TreeNode.class_type.instance_type)
     ('depth', int16),  # The depth of the tree.
     ('max_depth', int64),  # The maximum depth of the tree.
     ('surrogate', boolean),  # Whether to learn surrogate splits at each decision node.
+    ('random_state', int64),
 ])
 class Tree:
     """
         Decision Tree implementation in numba. Most parameters (see list above)
         match the Decision Tree implementation in scikit-learn.
     """
-    def __init__(self, ncat=None, imp_measure='gini', min_samples_split=2, min_samples_leaf=1, max_features=None, max_depth=1e6, surrogate=False):
+    def __init__(self, ncat=None, imp_measure='gini', min_samples_split=2,
+                 min_samples_leaf=1, max_features=None, max_depth=1e6,
+                 surrogate=False, random_state=None):
         self.X = None
         self.y = None
         self.ncat = ncat
@@ -440,6 +446,9 @@ class Tree:
         self.max_depth = max_depth
         self.root = TreeNode(0, np.empty(0, dtype=np.int64), None, np.empty(0, dtype=np.int64), False)
         self.surrogate = surrogate
+        if random_state is None:
+            random_state = np.random.randint(1e6)  # Not ideal
+        self.random_state = random_state
 
     def fit(self, X, y):
         """ Fits the Random Forest to (X, Y). """
@@ -465,24 +474,24 @@ class Tree:
                 queue.extend([node.left_child, node.right_child])
         print("Node %d is not part of the network.", id)
 
-    def predict(self, X):
+    def predict(self, X, smoothing=1e-6):
         """
             Returns the most likely class (highest number of counts) for
             each instance in X.
         """
         root = self.root
-        counts = evaluate(root, X, self.n_classes)
+        counts = evaluate(root, X, self.n_classes) + smoothing
         res = np.empty(counts.shape[0], dtype=np.float64)
         for i in range(counts.shape[0]):
             res[i] = np.argmax(counts[i, :])
         return res
 
-    def predict_proba(self, X):
+    def predict_proba(self, X, smoothing=1e-6):
         """
             Returns the conditional distribution over the class variable
             (normalised class counts) for each instance in X.
         """
-        counts = evaluate(self.root, X, self.n_classes)
+        counts = evaluate(self.root, X, self.n_classes) + smoothing
         res = np.empty(counts.shape)
         for i in range(counts.shape[0]):
             res[i, :] = (counts[i, :])/np.sum(counts[i, :])
@@ -498,7 +507,7 @@ class RandomForest:
     """
     def __init__(self, ncat, n_estimators=100, imp_measure='gini',
                  min_samples_split=2, min_samples_leaf=1, max_features=None,
-                 bootstrap=True, max_depth=1e6, surrogate=False):
+                 bootstrap=True, max_depth=1e6, surrogate=False, random_state=None):
 
         self.n_estimators = n_estimators
         self.imp_measure = imp_measure
@@ -509,6 +518,9 @@ class RandomForest:
         self.max_features = max_features
         self.max_depth = max_depth
         self.surrogate = surrogate
+        if random_state is None:
+            random_state = int(time.time())
+        self.random_state = random_state
 
     def fit(self, X, y):
         """ Fits the Random Forest to (X, Y). """
@@ -522,7 +534,7 @@ class RandomForest:
                                        self.min_samples_split,
                                        self.min_samples_leaf,
                                        self.max_features, self.max_depth,
-                                       self.surrogate)
+                                       self.surrogate, self.random_state)
 
     def topc(self, learnspn=np.Inf, max_height=1000000, thr=0.01, minstd=1,
              smoothing=1e-6):
@@ -567,7 +579,7 @@ class RandomForest:
             probas = np.zeros(shape=(X.shape[0], self.n_estimators, self.ncat[-1]))
             for i, estimator in enumerate(self.estimators):
                 probas[:, i] =  estimator.predict_proba(X)
-            return np.mean(probas, axis=1)
+            return np.argmax(np.mean(probas, axis=1), axis=1)
 
     def delete(self):
         for est in self.estimators:
