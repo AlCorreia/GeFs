@@ -7,6 +7,7 @@ import numpy as np
 import operator
 import random
 from scipy import stats
+import time
 from tqdm import tqdm
 
 from .learning import LearnSPN, fit
