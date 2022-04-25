@@ -264,10 +264,9 @@ def logsumexp3(a, axis):
 @njit
 def depfunc(i, deplist):
     """ Auxiliary function to assign clusters. See get_indep_clusters. """
-    if deplist[i] == i:
-        return i
-    else:
-        return deplist[i]
+    while(i != deplist[i]):
+        i = deplist[i]
+    return i
 
 
 @njit
